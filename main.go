@@ -7,8 +7,8 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	"log"
 	"os"
-	"sort"
 	"runtime/pprof"
+	"sort"
 )
 
 // overwrite this at build time ;
@@ -125,7 +125,7 @@ func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
 	}
 }
 
-func Profiling()(*os.File, *os.File){
+func Profiling() (*os.File, *os.File) {
 	// start CPU and Memory profiling
 	//
 	// NOTES:
@@ -220,6 +220,6 @@ func main() {
 	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSize)
 	log.Printf("Size reduced by %v Bytes (%.4f)\n",
 		sizeDifference,
-		float64(sizeDifference) / float64(inputFileSize),
+		float64(sizeDifference)/float64(inputFileSize),
 	)
 }
