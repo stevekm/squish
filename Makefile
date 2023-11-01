@@ -32,14 +32,6 @@ build-all:
 	done ; \
 	done
 
-
-# build-test-run: build
-# 	cat $(FASTQ) | ./$(BIN)
-# 	gunzip -c $(FASTQGZ) | ./$(BIN)
-# 	./$(BIN) <(gunzip -c $(FASTQGZ))
-# 	./$(BIN) $(FASTQ)
-# 	./$(BIN) $(FASTQGZ)
-
 # docker build -t stevekm/squish:latest .
 DOCKER_TAG:=stevekm/squish:$(GIT_TAG)
 docker-build:
