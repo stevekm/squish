@@ -11,8 +11,6 @@ import (
 	"runtime/pprof"
 )
 
-// TODO: calculate input and output file sizes https://stackoverflow.com/questions/17133590/how-to-get-file-length-in-go
-
 // overwrite this at build time ;
 // -ldflags="-X 'main.Version=someversion'"
 var Version = "foo-version"
@@ -76,15 +74,15 @@ func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte) Fastq
 
 	sequence, err := reader.ReadBytes(*delim)
 	if err != nil {
-		log.Fatalf("Error parsing line in fastq read: %v\n", err)
+		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)
 	}
 	plus, err := reader.ReadBytes(*delim)
 	if err != nil {
-		log.Fatalf("Error parsing line in fastq read: %v\n", err)
+		log.Fatalf("Error parsing plus line in fastq read: %v\n", err)
 	}
 	qualityScores, err := reader.ReadBytes(*delim)
 	if err != nil {
-		log.Fatalf("Error parsing line in fastq read: %v\n", err)
+		log.Fatalf("Error parsing qualityScores line in fastq read: %v\n", err)
 	}
 
 	read := FastqRead{
@@ -128,12 +126,16 @@ func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
 }
 
 func Profiling()(*os.File, *os.File){
+	// start CPU and Memory profiling
+	//
+	// NOTES:
 	// https://pkg.go.dev/runtime/pprof
 	// https://github.com/google/pprof/blob/main/doc/README.md
 	// $ go tool pprof cpu.prof
 	// $ go tool pprof mem.prof
 	// (pprof) top
 	//
+	// caller must also run these;
 	// defer cpuFile.Close()
 	// defer memFile.Close()
 	// pprof.WriteHeapProfile(memFile)
@@ -146,12 +148,11 @@ func Profiling()(*os.File, *os.File){
 	}
 	pprof.StartCPUProfile(cpuFile)
 
-	// Start memory profiling
+	// Start memory profiling file
 	memFile, err := os.Create("mem.prof")
 	if err != nil {
 		log.Fatal(err)
 	}
-	// defer memFile.Close()
 
 	return cpuFile, memFile
 }
@@ -161,7 +162,6 @@ func GetFileSize(filepath string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	// get the size
 	return fi.Size(), nil
 }
 
@@ -172,6 +172,7 @@ func main() {
 	defer memFile.Close()
 	defer pprof.StopCPUProfile()
 
+	// get command line args
 	inputFilepath := os.Args[1]
 	outputFilepath := os.Args[2]
 	var delim byte = '\n'
@@ -199,27 +200,26 @@ func main() {
 	numReads := len(reads)
 	log.Printf("%v reads loaded\n", numReads)
 
-	// sort the reads
+	// sort the fastq reads
 	SortReads(&reads)
 	log.Printf("%v reads sorted\n", len(reads))
 
 	pprof.WriteHeapProfile(memFile)
 
-	// write the reads
+	// write the fastq reads
 	WriteReads(&reads, writer)
 	writer.Flush()
 	writer.Close()
 
+	// print some stuff to the console log
 	outputFileSize, err := GetFileSize(outputFilepath)
 	if err != nil {
 		log.Printf("WARNING: could not get size for file %v\n", outputFilepath)
 	}
 	sizeDifference := inputFileSize - outputFileSize
-	log.Printf("Output file %v of size %v Bytes\n", outputFilepath, outputFileSize)
+	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSize)
 	log.Printf("Size reduced by %v Bytes (%.4f)\n",
 		sizeDifference,
 		float64(sizeDifference) / float64(inputFileSize),
 	)
-
-	log.Println("done")
 }
