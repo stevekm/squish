@@ -4,3 +4,4 @@ squish
 build
 *.pprof
 *.prof
+output.gz
