@@ -1,0 +1,6 @@
+data.gz
+data.txt
+squish
+build
+*.pprof
+*.prof
