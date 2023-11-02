@@ -204,12 +204,12 @@ func main() {
 	SortReads(&reads)
 	log.Printf("%v reads sorted\n", len(reads))
 
-	pprof.WriteHeapProfile(memFile)
-
 	// write the fastq reads
 	WriteReads(&reads, writer)
 	writer.Flush()
 	writer.Close()
+
+	pprof.WriteHeapProfile(memFile)
 
 	// print some stuff to the console log
 	outputFileSize, err := GetFileSize(outputFilepath)
