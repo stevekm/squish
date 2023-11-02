@@ -23,6 +23,7 @@ type FastqRead struct {
 	Plus          []byte
 	QualityScores []byte
 	N             int
+	GCContent     float64
 }
 
 func GetReader(inputFilepath string) (*bufio.Reader, *os.File, *os.File) {
@@ -68,6 +69,19 @@ func GetWriter(outputFilepath string) (*os.File, *gzip.Writer) {
 	return outputFile, writer
 }
 
+func CalcGCContent(sequence *[]byte) float64 {
+	// Calculation for GC content of the DNA sequence
+	var numGC float64 = 0.0
+	var numBases float64 = float64(len(*sequence))
+	for _, base := range *sequence {
+		if base == 'G' || base == 'C' {
+			numGC = numGC + 1.0
+		}
+	}
+	gcContent := numGC / numBases
+	return gcContent
+}
+
 func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *int) FastqRead {
 	// reads the next three lines from the reader,
 	// and combined with the first line,
@@ -92,6 +106,7 @@ func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *in
 		Plus:          plus,
 		QualityScores: qualityScores,
 		N:             *n,
+		GCContent:     CalcGCContent(&sequence),
 	}
 	*n = *n + 1
 	return read
@@ -169,7 +184,7 @@ func GetFileSize(filepath string) (int64, error) {
 	return fi.Size(), nil
 }
 
-func SaveOrder(readsBuffer *[]FastqRead){
+func SaveOrder(readsBuffer *[]FastqRead) {
 	outputFilepath := "order.txt"
 	log.Printf("Saving read order to file %v\n", outputFilepath)
 	outputFile, err := os.Create(outputFilepath)
