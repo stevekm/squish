@@ -1,3 +1,5 @@
+code.cloudfoundry.org/bytefmt v0.0.0-20231017140541-3b893ed0421b h1:/2OEIBwZAaJ8n8iTXrM4v/+bdyLDTLwcW6RZtkO4+r0=
+code.cloudfoundry.org/bytefmt v0.0.0-20231017140541-3b893ed0421b/go.mod h1:CKNYSQxmKcMCNIKoRG5rRR4AIgJMIoK65ya+Z5xHnk4=
 github.com/klauspost/compress v1.17.2 h1:RlWWUY/Dr4fL8qk9YG7DTZ7PDgME2V4csBXA8L/ixi4=
 github.com/klauspost/compress v1.17.2/go.mod h1:ntbaceVETuRiXiv4DpjP66DpAtAGkEQskQzEyD//IeE=
 github.com/klauspost/pgzip v1.2.6 h1:8RXeL5crjEUFnR2/Sn6GJNWtSQ3Dk8pq4CL3jvdDyjU=

@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"sort"
+	"code.cloudfoundry.org/bytefmt"
 )
 
 // overwrite this at build time ;
@@ -216,7 +217,9 @@ func main() {
 	if err != nil {
 		log.Printf("WARNING: could not get size for file %v\n", inputFilepath)
 	}
-	log.Printf("Input file %v of size %v Bytes\n", inputFilepath, inputFileSize)
+	inputFileSizeBytes := bytefmt.ByteSize(uint64(inputFileSize))
+	log.Printf("Input file %v of size %v Bytes\n", inputFilepath, inputFileSizeBytes)
+
 
 	// input
 	reader, file, gzFile := GetReader(inputFilepath)
@@ -254,10 +257,12 @@ func main() {
 	if err != nil {
 		log.Printf("WARNING: could not get size for file %v\n", outputFilepath)
 	}
+	outputFileSizeBytes := bytefmt.ByteSize(uint64(outputFileSize))
 	sizeDifference := inputFileSize - outputFileSize
-	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSize)
+	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
+	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSizeBytes)
 	log.Printf("Size reduced by %v Bytes (%.4f)\n",
-		sizeDifference,
+		sizeDifferenceBytes,
 		float64(sizeDifference)/float64(inputFileSize),
 	)
 }
