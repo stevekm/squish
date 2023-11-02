@@ -82,7 +82,7 @@ func CalcGCContent(sequence *[]byte) float64 {
 	return gcContent
 }
 
-func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *int) FastqRead {
+func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, i *int) FastqRead {
 	// reads the next three lines from the reader,
 	// and combined with the first line,
 	// makes a new FastqRead entry
@@ -105,10 +105,9 @@ func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *in
 		Sequence:      sequence,
 		Plus:          plus,
 		QualityScores: qualityScores,
-		I:             *n,
+		I:             *i,
 		GCContent:     CalcGCContent(&sequence),
 	}
-	*n = *n + 1
 	return read
 }
 
@@ -129,7 +128,7 @@ func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
-	var n int = 0
+	var i int = 0
 	for {
 		// get the next line
 		line, err := reader.ReadBytes(*delim) // includes the delim in the output line !!
@@ -138,7 +137,8 @@ func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
 		}
 		// check if its a FASTQ header line
 		if line[0] == '@' {
-			read := CreateFastqRead(&line, reader, delim, &n)
+			i = i + 1
+			read := CreateFastqRead(&line, reader, delim, &i)
 			*readsBuffer = append(*readsBuffer, read)
 		}
 	}
