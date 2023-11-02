@@ -22,7 +22,7 @@ type FastqRead struct {
 	Sequence      []byte
 	Plus          []byte
 	QualityScores []byte
-	N             int
+	I             int // index order in the original file
 	GCContent     float64
 }
 
@@ -105,7 +105,7 @@ func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *in
 		Sequence:      sequence,
 		Plus:          plus,
 		QualityScores: qualityScores,
-		N:             *n,
+		I:             *n,
 		GCContent:     CalcGCContent(&sequence),
 	}
 	*n = *n + 1
@@ -193,7 +193,7 @@ func SaveOrder(readsBuffer *[]FastqRead) {
 	}
 	writer := bufio.NewWriter(outputFile)
 	for _, read := range *readsBuffer {
-		_, err := writer.WriteString(string(read.N) + "\n")
+		_, err := writer.WriteString(string(read.I) + "\n")
 		if err != nil {
 			log.Fatalf("Error writing to file: %v\n", err)
 		}
