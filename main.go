@@ -4,12 +4,12 @@ import (
 	// "fmt"
 	// "compress/gzip"
 	"bufio"
+	"code.cloudfoundry.org/bytefmt"
 	gzip "github.com/klauspost/pgzip"
 	"log"
 	"os"
 	"runtime/pprof"
 	"sort"
-	"code.cloudfoundry.org/bytefmt"
 )
 
 // overwrite this at build time ;
@@ -219,7 +219,6 @@ func main() {
 	}
 	inputFileSizeBytes := bytefmt.ByteSize(uint64(inputFileSize))
 	log.Printf("Input file %v of size %v Bytes\n", inputFilepath, inputFileSizeBytes)
-
 
 	// input
 	reader, file, gzFile := GetReader(inputFilepath)
