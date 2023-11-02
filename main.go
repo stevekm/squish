@@ -22,6 +22,7 @@ type FastqRead struct {
 	Sequence      []byte
 	Plus          []byte
 	QualityScores []byte
+	N             int
 }
 
 func GetReader(inputFilepath string) (*bufio.Reader, *os.File, *os.File) {
@@ -67,7 +68,7 @@ func GetWriter(outputFilepath string) (*os.File, *gzip.Writer) {
 	return outputFile, writer
 }
 
-func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte) FastqRead {
+func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, n *int) FastqRead {
 	// reads the next three lines from the reader,
 	// and combined with the first line,
 	// makes a new FastqRead entry
@@ -90,7 +91,9 @@ func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte) Fastq
 		Sequence:      sequence,
 		Plus:          plus,
 		QualityScores: qualityScores,
+		N:             *n,
 	}
+	*n = *n + 1
 	return read
 }
 
@@ -111,6 +114,7 @@ func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
+	var n int = 0
 	for {
 		// get the next line
 		line, err := reader.ReadBytes(*delim) // includes the delim in the output line !!
@@ -119,7 +123,7 @@ func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
 		}
 		// check if its a FASTQ header line
 		if line[0] == '@' {
-			read := CreateFastqRead(&line, reader, delim)
+			read := CreateFastqRead(&line, reader, delim, &n)
 			*readsBuffer = append(*readsBuffer, read)
 		}
 	}
@@ -165,6 +169,22 @@ func GetFileSize(filepath string) (int64, error) {
 	return fi.Size(), nil
 }
 
+func SaveOrder(readsBuffer *[]FastqRead){
+	outputFilepath := "order.txt"
+	log.Printf("Saving read order to file %v\n", outputFilepath)
+	outputFile, err := os.Create(outputFilepath)
+	if err != nil {
+		log.Fatalf("Error creating output file: %v\n", err)
+	}
+	writer := bufio.NewWriter(outputFile)
+	for _, read := range *readsBuffer {
+		_, err := writer.WriteString(string(read.N) + "\n")
+		if err != nil {
+			log.Fatalf("Error writing to file: %v\n", err)
+		}
+	}
+}
+
 func main() {
 	// start profiler
 	cpuFile, memFile := Profiling()
@@ -205,11 +225,14 @@ func main() {
 	log.Printf("%v reads sorted\n", len(reads))
 
 	// write the fastq reads
+	log.Printf("Writing to output file %v\n", outputFilepath)
 	WriteReads(&reads, writer)
 	writer.Flush()
 	writer.Close()
 
 	pprof.WriteHeapProfile(memFile)
+
+	SaveOrder(&reads)
 
 	// print some stuff to the console log
 	outputFileSize, err := GetFileSize(outputFilepath)
