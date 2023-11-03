@@ -267,6 +267,10 @@ func RunAlphaSort(config Config) {
 	SaveOrder(&reads)
 }
 
+func RunGCSort() {
+
+}
+
 type Config struct {
 	SortMethod       string
 	SortMethods      []string
@@ -325,8 +329,17 @@ func main() {
 	//
 
 	// insert modular sort methods here
-	log.Printf("Using sort method: %v\n", config.SortMethod)
-	RunAlphaSort(config)
+	switch config.SortMethod {
+	case "alpha":
+		log.Printf("Using sort method: %v\n", config.SortMethod)
+		RunAlphaSort(config)
+	// case "gc":
+	// 	log.Printf("Using sort method: %v\n", config.SortMethod)
+	// 	RunGCSort()
+	default:
+		log.Printf("Using default sort method: %v\n", defaultSortMethod)
+		RunAlphaSort(config)
+	}
 
 	//
 	//
