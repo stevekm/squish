@@ -122,6 +122,10 @@ func SortReads(reads *[]FastqRead) {
 	sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].Sequence) < string((*reads)[j].Sequence) })
 }
 
+func SortReadsGC(reads *[]FastqRead){
+	sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
+}
+
 func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
 	var n int = 0
 	for _, read := range *reads {
@@ -267,8 +271,33 @@ func RunAlphaSort(config Config) {
 	SaveOrder(&reads)
 }
 
-func RunGCSort() {
+func RunGCSort(config Config) {
+	// input
+	reader, file, gzFile := GetReader(config.InputFilepath)
+	defer file.Close()
+	defer gzFile.Close()
 
+	// output
+	outputFile, writer := GetWriter(config.OutputFilepath)
+	defer outputFile.Close()
+
+	// hold all the reads from the file in here
+	reads := []FastqRead{}
+
+	// load all reads from file
+	LoadReads(&reads, reader, &config.RecordDelim)
+	log.Printf("%v reads loaded\n", len(reads))
+
+	// sort the fastq reads
+	SortReadsGC(&reads)
+	log.Printf("%v reads after sorting\n", len(reads))
+
+	// write the fastq reads
+	log.Printf("Writing to output file %v\n", config.OutputFilepath)
+	WriteReads(&reads, writer)
+
+	// save the order of the sorted reads to file
+	SaveOrder(&reads)
 }
 
 type Config struct {
@@ -333,9 +362,9 @@ func main() {
 	case "alpha":
 		log.Printf("Using sort method: %v\n", config.SortMethod)
 		RunAlphaSort(config)
-	// case "gc":
-	// 	log.Printf("Using sort method: %v\n", config.SortMethod)
-	// 	RunGCSort()
+	case "gc":
+		log.Printf("Using sort method: %v\n", config.SortMethod)
+		RunGCSort(config)
 	default:
 		log.Printf("Using default sort method: %v\n", defaultSortMethod)
 		RunAlphaSort(config)
