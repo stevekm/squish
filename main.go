@@ -1,15 +1,18 @@
 package main
 
 import (
-	// "fmt"
+	"fmt"
 	// "compress/gzip"
 	"bufio"
 	"code.cloudfoundry.org/bytefmt"
+	"flag"
 	gzip "github.com/klauspost/pgzip"
 	"log"
 	"os"
 	"runtime/pprof"
 	"sort"
+	"strconv"
+	"time"
 )
 
 // overwrite this at build time ;
@@ -160,6 +163,8 @@ func Profiling() (*os.File, *os.File) {
 	// defer memFile.Close()
 	// pprof.WriteHeapProfile(memFile)
 	// defer pprof.StopCPUProfile()
+	//
+	// see also; https://pkg.go.dev/net/http/pprof
 
 	// Start CPU profiling
 	cpuFile, err := os.Create("cpu.prof")
@@ -187,21 +192,37 @@ func GetFileSize(filepath string) (int64, error) {
 
 func SaveOrder(readsBuffer *[]FastqRead) {
 	outputFilepath := "order.txt"
-	log.Printf("Saving read order to file %v\n", outputFilepath)
+	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
 	outputFile, err := os.Create(outputFilepath)
 	if err != nil {
 		log.Fatalf("Error creating output file: %v\n", err)
 	}
+	defer outputFile.Close()
+
 	writer := bufio.NewWriter(outputFile)
+	// defer writer.Close()
+	defer writer.Flush()
 	for _, read := range *readsBuffer {
-		_, err := writer.WriteString(string(read.I) + "\n")
+		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
 		if err != nil {
 			log.Fatalf("Error writing to file: %v\n", err)
 		}
 	}
 }
 
+func PrintVersionAndQuit() {
+	fmt.Println(Version)
+	os.Exit(0)
+}
+
+func MinCliPosArgs(args []string, n int) {
+	if len(args) < n {
+		log.Fatalf("Not enough cli args provided, %v args required\n", n)
+	}
+}
+
 func main() {
+	timeStart := time.Now()
 	// start profiler
 	cpuFile, memFile := Profiling()
 	defer cpuFile.Close()
@@ -209,8 +230,15 @@ func main() {
 	defer pprof.StopCPUProfile()
 
 	// get command line args
-	inputFilepath := os.Args[1]
-	outputFilepath := os.Args[2]
+	printVersion := flag.Bool("v", false, "print version information")
+	flag.Parse()
+	cliArgs := flag.Args() // all positional args passed
+	if *printVersion {
+		PrintVersionAndQuit()
+	}
+	MinCliPosArgs(cliArgs, 2)
+	inputFilepath := cliArgs[0]
+	outputFilepath := cliArgs[1]
 	var delim byte = '\n'
 
 	inputFileSize, err := GetFileSize(inputFilepath)
@@ -252,6 +280,8 @@ func main() {
 	SaveOrder(&reads)
 
 	// print some stuff to the console log
+	timeStop := time.Now()
+	timeDuration := timeStop.Sub(timeStart)
 	outputFileSize, err := GetFileSize(outputFilepath)
 	if err != nil {
 		log.Printf("WARNING: could not get size for file %v\n", outputFilepath)
@@ -260,8 +290,9 @@ func main() {
 	sizeDifference := inputFileSize - outputFileSize
 	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
 	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSizeBytes)
-	log.Printf("Size reduced by %v Bytes (%.4f)\n",
+	log.Printf("Size reduced by %v Bytes (%.4f) in %v\n",
 		sizeDifferenceBytes,
 		float64(sizeDifference)/float64(inputFileSize),
+		timeDuration,
 	)
 }
