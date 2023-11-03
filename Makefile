@@ -12,6 +12,12 @@ FASTQGZ:=data/test1.fastq.gz
 test-run:
 	go run "$(SRC)" "$(FASTQGZ)" "output.gz"
 
+# brew install graphviz
+PDF:=memprofile.pdf
+pdf:
+	go tool pprof -pdf -output $(PDF) mem.prof && \
+	open -a Preview $(PDF)
+.PHONY:pdf
 
 # NOTE: you can just ignore this error message;
 # fatal: No names found, cannot describe anything.

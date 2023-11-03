@@ -6,3 +6,5 @@ build
 *.prof
 output.gz
 order.txt
+*.pdf
+*.gz

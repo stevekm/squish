@@ -153,7 +153,7 @@ func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
 	}
 }
 
-func Profiling() (*os.File, *os.File) {
+func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	// start CPU and Memory profiling
 	//
 	// NOTES:
@@ -166,23 +166,25 @@ func Profiling() (*os.File, *os.File) {
 	// caller must also run these;
 	// defer cpuFile.Close()
 	// defer memFile.Close()
-	// pprof.WriteHeapProfile(memFile)
 	// defer pprof.StopCPUProfile()
+	// defer pprof.WriteHeapProfile(memFile)
 	//
 	// see also; https://pkg.go.dev/net/http/pprof
 
 	// Start CPU profiling
-	cpuFile, err := os.Create("cpu.prof")
+	cpuFile, err := os.Create(cpuFilename)
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("CPU profile will be saved to %v\n", cpuFilename)
 	pprof.StartCPUProfile(cpuFile)
 
 	// Start memory profiling file
-	memFile, err := os.Create("mem.prof")
+	memFile, err := os.Create(memFilename)
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("Memory profile will be saved to %v\n", memFilename)
 
 	return cpuFile, memFile
 }
@@ -236,25 +238,67 @@ func MinCliPosArgs(args []string, n int) {
 	}
 }
 
+func RunAlphaSort(config Config) {
+	// input
+	reader, file, gzFile := GetReader(config.InputFilepath)
+	defer file.Close()
+	defer gzFile.Close()
+
+	// output
+	outputFile, writer := GetWriter(config.OutputFilepath)
+	defer outputFile.Close()
+
+	// hold all the reads from the file in here
+	reads := []FastqRead{}
+
+	// load all reads from file
+	LoadReads(&reads, reader, &config.RecordDelim)
+	log.Printf("%v reads loaded\n", len(reads))
+
+	// sort the fastq reads
+	SortReads(&reads)
+	log.Printf("%v reads after sorting\n", len(reads))
+
+	// write the fastq reads
+	log.Printf("Writing to output file %v\n", config.OutputFilepath)
+	WriteReads(&reads, writer)
+
+	// save the order of the sorted reads to file
+	SaveOrder(&reads)
+}
+
 type Config struct {
 	SortMethod       string
+	SortMethods      []string
 	InputFilepath    string
+	InputFileSize    int64
 	OutputFilepath   string
 	RecordDelim      byte
 	RecordHeaderChar byte
 	TimeStart        time.Time
 }
 
+const fastqHeaderChar byte = '@'
+const delim byte = '\n'
+const defaultSortMethod string = "alpha"
+const cpuProfileFilename string = "cpu.prof"
+const memProfileFilename string = "mem.prof"
+
 func main() {
 	timeStart := time.Now()
+	sortMethods := []string{defaultSortMethod, "gc"}
+	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethods)
+
 	// start profiler
-	cpuFile, memFile := Profiling()
+	cpuFile, memFile := Profiling(cpuProfileFilename, memProfileFilename)
 	defer cpuFile.Close()
 	defer memFile.Close()
 	defer pprof.StopCPUProfile()
+	defer pprof.WriteHeapProfile(memFile)
 
 	// get command line args
 	printVersion := flag.Bool("v", false, "print version information")
+	sortMethod := flag.String("m", defaultSortMethod, "Fastq read sorting method. "+sortMethodOptionStr)
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
@@ -263,14 +307,16 @@ func main() {
 	MinCliPosArgs(cliArgs, 2)
 	inputFilepath := cliArgs[0]
 	outputFilepath := cliArgs[1]
-	var delim byte = '\n'
 
+	inputFileSize := LogFileSize(inputFilepath, "Input")
 	config := Config{
-		SortMethod:       "alpha",
+		SortMethod:       *sortMethod,
+		SortMethods:      sortMethods,
 		InputFilepath:    inputFilepath,
+		InputFileSize:    inputFileSize,
 		OutputFilepath:   outputFilepath,
 		RecordDelim:      delim,
-		RecordHeaderChar: '@',
+		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
 	}
 
@@ -278,35 +324,9 @@ func main() {
 	//
 	//
 
-	inputFileSize := LogFileSize(config.InputFilepath, "Input")
-
-	// input
-	reader, file, gzFile := GetReader(config.InputFilepath)
-	defer file.Close()
-	defer gzFile.Close()
-
-	// output
-	outputFile, writer := GetWriter(outputFilepath)
-	defer outputFile.Close()
-
-	// hold all the reads from the file in here
-	reads := []FastqRead{}
-
-	// load all reads from file
-	LoadReads(&reads, reader, &delim)
-	log.Printf("%v reads loaded\n", len(reads))
-
-	// sort the fastq reads
-	SortReads(&reads)
-	log.Printf("%v reads after sorting\n", len(reads))
-
-	// write the fastq reads
-	log.Printf("Writing to output file %v\n", outputFilepath)
-	WriteReads(&reads, writer)
-
-	pprof.WriteHeapProfile(memFile)
-
-	SaveOrder(&reads)
+	// insert modular sort methods here
+	log.Printf("Using sort method: %v\n", config.SortMethod)
+	RunAlphaSort(config)
 
 	//
 	//
@@ -314,9 +334,9 @@ func main() {
 
 	// print some stuff to the console log
 	timeStop := time.Now()
-	timeDuration := timeStop.Sub(timeStart)
+	timeDuration := timeStop.Sub(config.TimeStart)
 	outputFileSize := LogFileSize(config.OutputFilepath, "Output")
-	sizeDifference := inputFileSize - outputFileSize
+	sizeDifference := config.InputFileSize - outputFileSize
 	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
 
 	log.Printf("Size reduced by %v Bytes (%.4f) in %v\n",
