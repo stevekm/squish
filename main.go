@@ -123,12 +123,17 @@ func SortReads(reads *[]FastqRead) {
 }
 
 func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
+	var n int = 0
 	for _, read := range *reads {
 		writer.Write(read.Id)
 		writer.Write(read.Sequence)
 		writer.Write(read.Plus)
 		writer.Write(read.QualityScores)
+		n = n + 1
 	}
+	log.Printf("Wrote %v reads\n", n)
+	writer.Flush()
+	writer.Close()
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
@@ -190,6 +195,16 @@ func GetFileSize(filepath string) (int64, error) {
 	return fi.Size(), nil
 }
 
+func LogFileSize(filepath string, filetype string) int64 {
+	inputFileSize, err := GetFileSize(filepath)
+	if err != nil {
+		log.Printf("WARNING: could not get size for file %v\n", filepath)
+	}
+	inputFileSizeBytes := bytefmt.ByteSize(uint64(inputFileSize))
+	log.Printf("%v file %v of size %v Bytes\n", filetype, filepath, inputFileSizeBytes)
+	return inputFileSize
+}
+
 func SaveOrder(readsBuffer *[]FastqRead) {
 	outputFilepath := "order.txt"
 	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
@@ -221,6 +236,15 @@ func MinCliPosArgs(args []string, n int) {
 	}
 }
 
+type Config struct {
+	SortMethod       string
+	InputFilepath    string
+	OutputFilepath   string
+	RecordDelim      byte
+	RecordHeaderChar byte
+	TimeStart        time.Time
+}
+
 func main() {
 	timeStart := time.Now()
 	// start profiler
@@ -241,15 +265,23 @@ func main() {
 	outputFilepath := cliArgs[1]
 	var delim byte = '\n'
 
-	inputFileSize, err := GetFileSize(inputFilepath)
-	if err != nil {
-		log.Printf("WARNING: could not get size for file %v\n", inputFilepath)
+	config := Config{
+		SortMethod:       "alpha",
+		InputFilepath:    inputFilepath,
+		OutputFilepath:   outputFilepath,
+		RecordDelim:      delim,
+		RecordHeaderChar: '@',
+		TimeStart:        timeStart,
 	}
-	inputFileSizeBytes := bytefmt.ByteSize(uint64(inputFileSize))
-	log.Printf("Input file %v of size %v Bytes\n", inputFilepath, inputFileSizeBytes)
+
+	//
+	//
+	//
+
+	inputFileSize := LogFileSize(config.InputFilepath, "Input")
 
 	// input
-	reader, file, gzFile := GetReader(inputFilepath)
+	reader, file, gzFile := GetReader(config.InputFilepath)
 	defer file.Close()
 	defer gzFile.Close()
 
@@ -262,34 +294,31 @@ func main() {
 
 	// load all reads from file
 	LoadReads(&reads, reader, &delim)
-	numReads := len(reads)
-	log.Printf("%v reads loaded\n", numReads)
+	log.Printf("%v reads loaded\n", len(reads))
 
 	// sort the fastq reads
 	SortReads(&reads)
-	log.Printf("%v reads sorted\n", len(reads))
+	log.Printf("%v reads after sorting\n", len(reads))
 
 	// write the fastq reads
 	log.Printf("Writing to output file %v\n", outputFilepath)
 	WriteReads(&reads, writer)
-	writer.Flush()
-	writer.Close()
 
 	pprof.WriteHeapProfile(memFile)
 
 	SaveOrder(&reads)
 
+	//
+	//
+	//
+
 	// print some stuff to the console log
 	timeStop := time.Now()
 	timeDuration := timeStop.Sub(timeStart)
-	outputFileSize, err := GetFileSize(outputFilepath)
-	if err != nil {
-		log.Printf("WARNING: could not get size for file %v\n", outputFilepath)
-	}
-	outputFileSizeBytes := bytefmt.ByteSize(uint64(outputFileSize))
+	outputFileSize := LogFileSize(config.OutputFilepath, "Output")
 	sizeDifference := inputFileSize - outputFileSize
 	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
-	log.Printf("Output file created %v of size %v Bytes\n", outputFilepath, outputFileSizeBytes)
+
 	log.Printf("Size reduced by %v Bytes (%.4f) in %v\n",
 		sizeDifferenceBytes,
 		float64(sizeDifference)/float64(inputFileSize),
