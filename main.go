@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"strings"
 )
 
 // overwrite this at build time ;
@@ -45,12 +46,18 @@ func GetReader(inputFilepath string) (*bufio.Reader, *os.File, *os.File) {
 		log.Fatalf("Error opening file: %v\n", err)
 	}
 
-	gz, err := gzip.NewReader(file)
-	if err != nil {
-		log.Fatalf("Error opening file: %v\n", err)
-	}
+	if strings.HasSuffix(inputFilepath, ".gz") {
+		log.Printf("Opening .gz file %v\n", inputFilepath)
+		gz, err := gzip.NewReader(file)
+		if err != nil {
+			log.Fatalf("Error opening file: %v\n", err)
+		}
 
-	reader = bufio.NewReaderSize(gz, bufferSize)
+		reader = bufio.NewReaderSize(gz, bufferSize)
+	} else {
+		log.Printf("Opening non-compressed file: %v\n", inputFilepath)
+		reader = bufio.NewReaderSize(file, bufferSize)
+	}
 
 	return reader, file, gzFile
 }
@@ -124,6 +131,10 @@ func SortReads(reads *[]FastqRead) {
 
 func SortReadsGC(reads *[]FastqRead){
 	sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
+}
+
+func SortReadsQual(reads *[]FastqRead){
+	sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].QualityScores) < string((*reads)[j].QualityScores) })
 }
 
 func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
@@ -300,6 +311,35 @@ func RunGCSort(config Config) {
 	SaveOrder(&reads)
 }
 
+func RunQualSort(config Config) {
+	// input
+	reader, file, gzFile := GetReader(config.InputFilepath)
+	defer file.Close()
+	defer gzFile.Close()
+
+	// output
+	outputFile, writer := GetWriter(config.OutputFilepath)
+	defer outputFile.Close()
+
+	// hold all the reads from the file in here
+	reads := []FastqRead{}
+
+	// load all reads from file
+	LoadReads(&reads, reader, &config.RecordDelim)
+	log.Printf("%v reads loaded\n", len(reads))
+
+	// sort the fastq reads
+	SortReadsQual(&reads)
+	log.Printf("%v reads after sorting\n", len(reads))
+
+	// write the fastq reads
+	log.Printf("Writing to output file %v\n", config.OutputFilepath)
+	WriteReads(&reads, writer)
+
+	// save the order of the sorted reads to file
+	SaveOrder(&reads)
+}
+
 type Config struct {
 	SortMethod       string
 	SortMethods      []string
@@ -319,7 +359,7 @@ const memProfileFilename string = "mem.prof"
 
 func main() {
 	timeStart := time.Now()
-	sortMethods := []string{defaultSortMethod, "gc"}
+	sortMethods := []string{defaultSortMethod, "gc", "qual"}
 	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethods)
 
 	// start profiler
@@ -358,13 +398,14 @@ func main() {
 	//
 
 	// insert modular sort methods here
+	log.Printf("Using sort method: %v\n", config.SortMethod)
 	switch config.SortMethod {
 	case "alpha":
-		log.Printf("Using sort method: %v\n", config.SortMethod)
 		RunAlphaSort(config)
 	case "gc":
-		log.Printf("Using sort method: %v\n", config.SortMethod)
 		RunGCSort(config)
+	case "qual":
+		RunQualSort(config)
 	default:
 		log.Printf("Using default sort method: %v\n", defaultSortMethod)
 		RunAlphaSort(config)
