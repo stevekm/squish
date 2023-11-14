@@ -31,11 +31,24 @@ type FastqRead struct {
 	GCContent     float64
 }
 
-func GetReader(inputFilepath string) (*bufio.Reader, *os.File, *os.File) {
+// object to hold the input file handles and wrap their close methods
+type InputFileReader struct {
+	Reader *bufio.Reader
+	File *os.File
+	GzFile *os.File
+}
+
+func (r *InputFileReader) Close () {
+	r.File.Close()
+	if r.GzFile != nil {
+		r.GzFile.Close()
+	}
+}
+
+func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.File, *os.File)
 	// open the input file for reading
 	// the caller needs to run this;
-	// defer file.Close()
-	// defer gzFile.Close()
+	// defer reader.Close()
 	var reader *bufio.Reader
 	var file *os.File
 	var gzFile *os.File
@@ -59,7 +72,7 @@ func GetReader(inputFilepath string) (*bufio.Reader, *os.File, *os.File) {
 		reader = bufio.NewReaderSize(file, bufferSize)
 	}
 
-	return reader, file, gzFile
+	return InputFileReader{reader, file, gzFile}
 }
 
 func GetWriter(outputFilepath string) (*os.File, *gzip.Writer) {
@@ -93,20 +106,20 @@ func CalcGCContent(sequence *[]byte) float64 {
 	return gcContent
 }
 
-func CreateFastqRead(firstLine *[]byte, reader *bufio.Reader, delim *byte, i *int) FastqRead {
+func CreateFastqRead(firstLine *[]byte, reader InputFileReader, delim *byte, i *int) FastqRead {
 	// reads the next three lines from the reader,
 	// and combined with the first line,
 	// makes a new FastqRead entry
 
-	sequence, err := reader.ReadBytes(*delim)
+	sequence, err := reader.Reader.ReadBytes(*delim)
 	if err != nil {
 		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)
 	}
-	plus, err := reader.ReadBytes(*delim)
+	plus, err := reader.Reader.ReadBytes(*delim)
 	if err != nil {
 		log.Fatalf("Error parsing plus line in fastq read: %v\n", err)
 	}
-	qualityScores, err := reader.ReadBytes(*delim)
+	qualityScores, err := reader.Reader.ReadBytes(*delim)
 	if err != nil {
 		log.Fatalf("Error parsing qualityScores line in fastq read: %v\n", err)
 	}
@@ -151,11 +164,11 @@ func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
 	writer.Close()
 }
 
-func LoadReads(readsBuffer *[]FastqRead, reader *bufio.Reader, delim *byte) {
+func LoadReads(readsBuffer *[]FastqRead, reader InputFileReader, delim *byte) {
 	var i int = 0
 	for {
 		// get the next line
-		line, err := reader.ReadBytes(*delim) // includes the delim in the output line !!
+		line, err := reader.Reader.ReadBytes(*delim) // includes the delim in the output line !!
 		if err != nil {
 			break // end of file io.EOF
 		}
@@ -255,9 +268,8 @@ func MinCliPosArgs(args []string, n int) {
 
 func RunAlphaSort(config Config) {
 	// input
-	reader, file, gzFile := GetReader(config.InputFilepath)
-	defer file.Close()
-	defer gzFile.Close()
+	reader := GetReader(config.InputFilepath)
+	defer reader.Close()
 
 	// output
 	outputFile, writer := GetWriter(config.OutputFilepath)
@@ -284,9 +296,8 @@ func RunAlphaSort(config Config) {
 
 func RunGCSort(config Config) {
 	// input
-	reader, file, gzFile := GetReader(config.InputFilepath)
-	defer file.Close()
-	defer gzFile.Close()
+	reader := GetReader(config.InputFilepath)
+	defer reader.Close()
 
 	// output
 	outputFile, writer := GetWriter(config.OutputFilepath)
@@ -313,9 +324,8 @@ func RunGCSort(config Config) {
 
 func RunQualSort(config Config) {
 	// input
-	reader, file, gzFile := GetReader(config.InputFilepath)
-	defer file.Close()
-	defer gzFile.Close()
+	reader := GetReader(config.InputFilepath)
+	defer reader.Close()
 
 	// output
 	outputFile, writer := GetWriter(config.OutputFilepath)
