@@ -12,8 +12,8 @@ import (
 	"runtime/pprof"
 	"sort"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 )
 
 // overwrite this at build time ;
@@ -34,15 +34,26 @@ type FastqRead struct {
 // object to hold the input file handles and wrap their close methods
 type InputFileReader struct {
 	Reader *bufio.Reader
-	File *os.File
+	File   *os.File
 	GzFile *os.File
 }
 
-func (r *InputFileReader) Close () {
+func (r *InputFileReader) Close() {
 	r.File.Close()
 	if r.GzFile != nil {
 		r.GzFile.Close()
 	}
+}
+
+type OutputFileWriter struct {
+	File   *os.File
+	Writer *gzip.Writer
+}
+
+func (w *OutputFileWriter) Close() {
+	w.Writer.Flush()
+	w.Writer.Close()
+	w.File.Close()
 }
 
 func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.File, *os.File)
@@ -75,12 +86,10 @@ func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.Fil
 	return InputFileReader{reader, file, gzFile}
 }
 
-func GetWriter(outputFilepath string) (*os.File, *gzip.Writer) {
+func GetWriter(outputFilepath string) OutputFileWriter { //(*os.File, *gzip.Writer)
 	// initialize the output file writer
 	// the caller needs to run this;
-	// GzWriter.Flush()
-	// GzWriter.Close()
-	// File.Close()
+	// defer writer.Close()
 	outputFile, err := os.Create(outputFilepath)
 	if err != nil {
 		log.Fatalf("Error creating output file: %v\n", err)
@@ -90,7 +99,7 @@ func GetWriter(outputFilepath string) (*os.File, *gzip.Writer) {
 	if err != nil {
 		log.Fatalf("Error creating output writer: %v\n", err)
 	}
-	return outputFile, writer
+	return OutputFileWriter{outputFile, writer}
 }
 
 func CalcGCContent(sequence *[]byte) float64 {
@@ -142,26 +151,24 @@ func SortReads(reads *[]FastqRead) {
 	sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].Sequence) < string((*reads)[j].Sequence) })
 }
 
-func SortReadsGC(reads *[]FastqRead){
+func SortReadsGC(reads *[]FastqRead) {
 	sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
 }
 
-func SortReadsQual(reads *[]FastqRead){
+func SortReadsQual(reads *[]FastqRead) {
 	sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].QualityScores) < string((*reads)[j].QualityScores) })
 }
 
-func WriteReads(reads *[]FastqRead, writer *gzip.Writer) {
+func WriteReads(reads *[]FastqRead, writer OutputFileWriter) {
 	var n int = 0
 	for _, read := range *reads {
-		writer.Write(read.Id)
-		writer.Write(read.Sequence)
-		writer.Write(read.Plus)
-		writer.Write(read.QualityScores)
+		writer.Writer.Write(read.Id)
+		writer.Writer.Write(read.Sequence)
+		writer.Writer.Write(read.Plus)
+		writer.Writer.Write(read.QualityScores)
 		n = n + 1
 	}
 	log.Printf("Wrote %v reads\n", n)
-	writer.Flush()
-	writer.Close()
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader InputFileReader, delim *byte) {
@@ -272,8 +279,8 @@ func RunAlphaSort(config Config) {
 	defer reader.Close()
 
 	// output
-	outputFile, writer := GetWriter(config.OutputFilepath)
-	defer outputFile.Close()
+	writer := GetWriter(config.OutputFilepath)
+	defer writer.Close()
 
 	// hold all the reads from the file in here
 	reads := []FastqRead{}
@@ -300,8 +307,8 @@ func RunGCSort(config Config) {
 	defer reader.Close()
 
 	// output
-	outputFile, writer := GetWriter(config.OutputFilepath)
-	defer outputFile.Close()
+	writer := GetWriter(config.OutputFilepath)
+	defer writer.Close()
 
 	// hold all the reads from the file in here
 	reads := []FastqRead{}
@@ -328,8 +335,8 @@ func RunQualSort(config Config) {
 	defer reader.Close()
 
 	// output
-	outputFile, writer := GetWriter(config.OutputFilepath)
-	defer outputFile.Close()
+	writer := GetWriter(config.OutputFilepath)
+	defer writer.Close()
 
 	// hold all the reads from the file in here
 	reads := []FastqRead{}
