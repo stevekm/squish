@@ -71,26 +71,6 @@ func LogFileSize(filepath string, filetype string) int64 {
 	return inputFileSize
 }
 
-// func SaveOrder(readsBuffer *[]fastq.FastqRead) {
-// 	outputFilepath := "order.txt"
-// 	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
-// 	outputFile, err := os.Create(outputFilepath)
-// 	if err != nil {
-// 		log.Fatalf("Error creating output file: %v\n", err)
-// 	}
-// 	defer outputFile.Close()
-
-// 	writer := bufio.NewWriter(outputFile)
-// 	// defer writer.Close()
-// 	defer writer.Flush()
-// 	for _, read := range *readsBuffer {
-// 		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
-// 		if err != nil {
-// 			log.Fatalf("Error writing to file: %v\n", err)
-// 		}
-// 	}
-// }
-
 func PrintVersionAndQuit() {
 	fmt.Println(Version)
 	os.Exit(0)
