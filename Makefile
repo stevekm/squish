@@ -13,11 +13,12 @@ test-run:
 	go run "$(SRC)" "$(FASTQGZ)" "output.gz"
 
 # brew install graphviz
+PROF:=mem.prof
 PDF:=memprofile.pdf
 pdf:
-	go tool pprof -pdf -output $(PDF) mem.prof && \
-	open -a Preview $(PDF)
+	go tool pprof -pdf -output $(PDF) $(PROF)
 .PHONY:pdf
+# && open -a Preview $(PDF)
 
 # NOTE: you can just ignore this error message;
 # fatal: No names found, cannot describe anything.
@@ -36,6 +37,14 @@ build-all:
 	echo "building: $$output" ; \
 	GOOS=$$os GOARCH=$$arch go build -ldflags="-X 'main.Version=$(GIT_TAG)'" -o "$${output}" $(SRC) ; \
 	done ; \
+	done
+
+test-run-all: $(BIN)
+	set -x
+	for i in alpha gc qual alpha-heap; do
+	echo ">>> RUNNING: $$i"
+	./$(BIN) -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" input/SRR14575325.gz9.fastq.gz output/SRR14575325.$$i.fastq.gz
+	$(MAKE) pdf PROF="mem.$$i.prof" PDF="memprofile.$$i.pdf"
 	done
 
 # docker build -t stevekm/squish:latest .

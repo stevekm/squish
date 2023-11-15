@@ -88,7 +88,7 @@ func PrintVersionAndQuit() {
 
 func MinCliPosArgs(args []string, n int) {
 	if len(args) < n {
-		log.Fatalf("Not enough cli args provided, %v args required\n", n)
+		log.Fatalf("Not enough cli args provided, %v args required, or use -h for help\n", n)
 	}
 }
 
@@ -111,6 +111,7 @@ func RunSort(config Config) {
 	log.Printf("%v reads loaded\n", len(reads))
 
 	// sort the fastq reads
+	log.Printf("starting read sort")
 	config.SortMethod.Func(&reads)
 	log.Printf("%v reads after sorting\n", len(reads))
 
@@ -128,6 +129,7 @@ func GetSortingMethods() (map[string]SortMethod, string) {
 		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
 		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
 		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
+		"alpha-heap":      SortMethod{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence},
 	}
 	// minimal map for help text printing
 	sortMethodsDescr := map[string]string{}
@@ -153,7 +155,7 @@ type Config struct {
 	RecordDelim      byte
 	RecordHeaderChar byte
 	TimeStart        time.Time
-	OrderFilename string
+	OrderFilename    string
 }
 
 func main() {
@@ -166,7 +168,6 @@ func main() {
 	cpuProfileFilename := flag.String("cpuProf", defaultCpuProfileFilename, "CPU profile filename")
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
 	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
-
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
@@ -193,7 +194,7 @@ func main() {
 		RecordDelim:      delim,
 		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
-		OrderFilename: *orderFilename,
+		OrderFilename:    *orderFilename,
 	}
 
 	//
