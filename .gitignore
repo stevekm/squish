@@ -8,3 +8,5 @@ output.gz
 order.txt
 *.pdf
 *.gz
+input
+output
