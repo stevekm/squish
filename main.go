@@ -1,17 +1,15 @@
 package main
 
 import (
-	"fmt"
-	_io "squish/io"
-	_sort "squish/sort"
-	fastq "squish/fastq"
-	"bufio"
 	"code.cloudfoundry.org/bytefmt"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"runtime/pprof"
-	"strconv"
+	fastq "squish/fastq"
+	_io "squish/io"
+	_sort "squish/sort"
 	"time"
 )
 
@@ -73,25 +71,25 @@ func LogFileSize(filepath string, filetype string) int64 {
 	return inputFileSize
 }
 
-func SaveOrder(readsBuffer *[]fastq.FastqRead) {
-	outputFilepath := "order.txt"
-	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
-	outputFile, err := os.Create(outputFilepath)
-	if err != nil {
-		log.Fatalf("Error creating output file: %v\n", err)
-	}
-	defer outputFile.Close()
+// func SaveOrder(readsBuffer *[]fastq.FastqRead) {
+// 	outputFilepath := "order.txt"
+// 	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
+// 	outputFile, err := os.Create(outputFilepath)
+// 	if err != nil {
+// 		log.Fatalf("Error creating output file: %v\n", err)
+// 	}
+// 	defer outputFile.Close()
 
-	writer := bufio.NewWriter(outputFile)
-	// defer writer.Close()
-	defer writer.Flush()
-	for _, read := range *readsBuffer {
-		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
-		if err != nil {
-			log.Fatalf("Error writing to file: %v\n", err)
-		}
-	}
-}
+// 	writer := bufio.NewWriter(outputFile)
+// 	// defer writer.Close()
+// 	defer writer.Flush()
+// 	for _, read := range *readsBuffer {
+// 		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
+// 		if err != nil {
+// 			log.Fatalf("Error writing to file: %v\n", err)
+// 		}
+// 	}
+// }
 
 func PrintVersionAndQuit() {
 	fmt.Println(Version)
@@ -121,7 +119,7 @@ func RunAlphaSort(config Config) {
 	log.Printf("%v reads loaded\n", len(reads))
 
 	// sort the fastq reads
-	_sort.SortReads(&reads)
+	_sort.SortReadsSequence(&reads)
 	log.Printf("%v reads after sorting\n", len(reads))
 
 	// write the fastq reads
@@ -129,7 +127,7 @@ func RunAlphaSort(config Config) {
 	fastq.WriteReads(&reads, writer)
 
 	// save the order of the sorted reads to file
-	SaveOrder(&reads)
+	fastq.SaveOrder(&reads)
 }
 
 func RunGCSort(config Config) {
@@ -157,7 +155,7 @@ func RunGCSort(config Config) {
 	fastq.WriteReads(&reads, writer)
 
 	// save the order of the sorted reads to file
-	SaveOrder(&reads)
+	fastq.SaveOrder(&reads)
 }
 
 func RunQualSort(config Config) {
@@ -185,7 +183,7 @@ func RunQualSort(config Config) {
 	fastq.WriteReads(&reads, writer)
 
 	// save the order of the sorted reads to file
-	SaveOrder(&reads)
+	fastq.SaveOrder(&reads)
 }
 
 type Config struct {

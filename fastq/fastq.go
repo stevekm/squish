@@ -3,10 +3,12 @@ package fastq
 // package for handling fastq data
 
 import (
-	_io "squish/io"
+	"bufio"
 	"log"
+	"os"
+	_io "squish/io"
+	"strconv"
 )
-
 
 // NOTE: fastq read methods https://pkg.go.dev/github.com/biogo/biogo/io/seqio/fastq#Reader.Read
 // https://en.wikipedia.org/wiki/FASTQ_format
@@ -61,8 +63,6 @@ func CreateFastqRead(firstLine *[]byte, reader _io.InputFileReader, delim *byte,
 	return read
 }
 
-
-
 func WriteReads(reads *[]FastqRead, writer _io.OutputFileWriter) {
 	var n int = 0
 	for _, read := range *reads {
@@ -88,6 +88,26 @@ func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte
 			i = i + 1
 			read := CreateFastqRead(&line, reader, delim, &i)
 			*readsBuffer = append(*readsBuffer, read)
+		}
+	}
+}
+
+func SaveOrder(readsBuffer *[]FastqRead) {
+	outputFilepath := "order.txt"
+	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
+	outputFile, err := os.Create(outputFilepath)
+	if err != nil {
+		log.Fatalf("Error creating output file: %v\n", err)
+	}
+	defer outputFile.Close()
+
+	writer := bufio.NewWriter(outputFile)
+	// defer writer.Close()
+	defer writer.Flush()
+	for _, read := range *readsBuffer {
+		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
+		if err != nil {
+			log.Fatalf("Error writing to file: %v\n", err)
 		}
 	}
 }
