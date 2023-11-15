@@ -25,6 +25,7 @@ const defaultSortDescrption string = "Alphabetical sort on sequence"
 // const defaultSortFunc func() = _sort.SortReadsSequence
 const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
+const defaultOrderFilename string = "order.txt"
 
 func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	// start CPU and Memory profiling
@@ -118,7 +119,7 @@ func RunSort(config Config) {
 	fastq.WriteReads(&reads, writer)
 
 	// save the order of the sorted reads to file
-	fastq.SaveOrder(&reads)
+	fastq.SaveOrder(&reads, config.OrderFilename)
 }
 
 func GetSortingMethods() (map[string]SortMethod, string) {
@@ -152,6 +153,7 @@ type Config struct {
 	RecordDelim      byte
 	RecordHeaderChar byte
 	TimeStart        time.Time
+	OrderFilename string
 }
 
 func main() {
@@ -163,6 +165,7 @@ func main() {
 	sortMethodArg := flag.String("m", defaultSortMethod, "Fastq read sorting method. "+sortMethodOptionStr)
 	cpuProfileFilename := flag.String("cpuProf", defaultCpuProfileFilename, "CPU profile filename")
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
+	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
 
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
@@ -190,6 +193,7 @@ func main() {
 		RecordDelim:      delim,
 		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
+		OrderFilename: *orderFilename,
 	}
 
 	//
@@ -202,7 +206,7 @@ func main() {
 	defer pprof.StopCPUProfile()
 	defer pprof.WriteHeapProfile(memFile)
 
-	// insert modular sort methods here
+	// insert sort methods here
 	log.Printf("Using sort method: %v\n", config.SortMethod.CLIArg)
 	RunSort(config)
 

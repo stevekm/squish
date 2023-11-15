@@ -92,10 +92,9 @@ func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte
 	}
 }
 
-func SaveOrder(readsBuffer *[]FastqRead) {
-	outputFilepath := "order.txt"
-	log.Printf("Saving read order to file %v for %v reads\n", outputFilepath, len(*readsBuffer))
-	outputFile, err := os.Create(outputFilepath)
+func SaveOrder(readsBuffer *[]FastqRead, orderFilename string) {
+	log.Printf("Saving read order to file %v for %v reads\n", orderFilename, len(*readsBuffer))
+	outputFile, err := os.Create(orderFilename)
 	if err != nil {
 		log.Fatalf("Error creating output file: %v\n", err)
 	}
