@@ -10,3 +10,4 @@ order.txt
 *.gz
 input
 output
+order.*
