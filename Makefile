@@ -40,11 +40,13 @@ build-all:
 	done
 
 # input/SRR14575325.gz9.fastq.gz
+FASTQIN:=input/mid.fastq.gz
+FASTQOUT:=output/mid
 test-run-all: $(BIN)
 	set -x
 	for i in alpha gc qual alpha-heap; do
 	echo ">>> RUNNING: $$i"
-	./$(BIN) -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" input/big.fastq.gz output/big.$$i.fastq.gz
+	./$(BIN) -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz
 	$(MAKE) pdf PROF="mem.$$i.prof" PDF="memprofile.$$i.pdf"
 	done
 
