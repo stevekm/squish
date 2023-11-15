@@ -23,8 +23,8 @@ const defaultSortMethod string = "alpha"
 const defaultSortDescrption string = "Alphabetical sort on sequence"
 
 // const defaultSortFunc func() = _sort.SortReadsSequence
-const cpuProfileFilename string = "cpu.prof"
-const memProfileFilename string = "mem.prof"
+const defaultCpuProfileFilename string = "cpu.prof"
+const defaultMemProfileFilename string = "mem.prof"
 
 func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	// start CPU and Memory profiling
@@ -110,7 +110,6 @@ func RunSort(config Config) {
 	log.Printf("%v reads loaded\n", len(reads))
 
 	// sort the fastq reads
-	// _sort.SortReadsQual(&reads)
 	config.SortMethod.Func(&reads)
 	log.Printf("%v reads after sorting\n", len(reads))
 
@@ -120,6 +119,23 @@ func RunSort(config Config) {
 
 	// save the order of the sorted reads to file
 	fastq.SaveOrder(&reads)
+}
+
+func GetSortingMethods() (map[string]SortMethod, string) {
+	// parse the available sorting methods
+	sortMethodMap := map[string]SortMethod{
+		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
+		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
+		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
+	}
+	// minimal map for help text printing
+	sortMethodsDescr := map[string]string{}
+	for key, value := range sortMethodMap {
+		sortMethodsDescr[key] = value.Description
+	}
+	// help text
+	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethodsDescr)
+	return sortMethodMap, sortMethodOptionStr
 }
 
 type SortMethod struct {
@@ -140,24 +156,14 @@ type Config struct {
 
 func main() {
 	timeStart := time.Now()
-
-	// parse the available sorting methods
-	sortMethodMap := map[string]SortMethod{
-		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
-		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
-		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
-	}
-	// minimal map for help text printing
-	sortMethodsDescr := map[string]string{}
-	for key, value := range sortMethodMap {
-		sortMethodsDescr[key] = value.Description
-	}
-	// help text
-	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethodsDescr)
+	sortMethodMap, sortMethodOptionStr := GetSortingMethods()
 
 	// get command line args
 	printVersion := flag.Bool("v", false, "print version information")
 	sortMethodArg := flag.String("m", defaultSortMethod, "Fastq read sorting method. "+sortMethodOptionStr)
+	cpuProfileFilename := flag.String("cpuProf", defaultCpuProfileFilename, "CPU profile filename")
+	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
+
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
@@ -190,7 +196,7 @@ func main() {
 	//
 	//
 	// start profiler
-	cpuFile, memFile := Profiling(cpuProfileFilename, memProfileFilename)
+	cpuFile, memFile := Profiling(*cpuProfileFilename, *memProfileFilename)
 	defer cpuFile.Close()
 	defer memFile.Close()
 	defer pprof.StopCPUProfile()
