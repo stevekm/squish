@@ -17,6 +17,15 @@ import (
 // -ldflags="-X 'main.Version=someversion'"
 var Version = "foo-version"
 
+const fastqHeaderChar byte = '@'
+const delim byte = '\n'
+const defaultSortMethod string = "alpha"
+const defaultSortDescrption string = "Alphabetical sort on sequence"
+
+// const defaultSortFunc func() = _sort.SortReadsSequence
+const cpuProfileFilename string = "cpu.prof"
+const memProfileFilename string = "mem.prof"
+
 func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	// start CPU and Memory profiling
 	//
@@ -82,7 +91,9 @@ func MinCliPosArgs(args []string, n int) {
 	}
 }
 
-func RunAlphaSort(config Config) {
+func RunSort(config Config) {
+	// run the chosen sorting method on the fastq file
+
 	// input
 	reader := _io.GetReader(config.InputFilepath)
 	defer reader.Close()
@@ -99,7 +110,8 @@ func RunAlphaSort(config Config) {
 	log.Printf("%v reads loaded\n", len(reads))
 
 	// sort the fastq reads
-	_sort.SortReadsSequence(&reads)
+	// _sort.SortReadsQual(&reads)
+	config.SortMethod.Func(&reads)
 	log.Printf("%v reads after sorting\n", len(reads))
 
 	// write the fastq reads
@@ -110,65 +122,14 @@ func RunAlphaSort(config Config) {
 	fastq.SaveOrder(&reads)
 }
 
-func RunGCSort(config Config) {
-	// input
-	reader := _io.GetReader(config.InputFilepath)
-	defer reader.Close()
-
-	// output
-	writer := _io.GetWriter(config.OutputFilepath)
-	defer writer.Close()
-
-	// hold all the reads from the file in here
-	reads := []fastq.FastqRead{}
-
-	// load all reads from file
-	fastq.LoadReads(&reads, reader, &config.RecordDelim)
-	log.Printf("%v reads loaded\n", len(reads))
-
-	// sort the fastq reads
-	_sort.SortReadsGC(&reads)
-	log.Printf("%v reads after sorting\n", len(reads))
-
-	// write the fastq reads
-	log.Printf("Writing to output file %v\n", config.OutputFilepath)
-	fastq.WriteReads(&reads, writer)
-
-	// save the order of the sorted reads to file
-	fastq.SaveOrder(&reads)
-}
-
-func RunQualSort(config Config) {
-	// input
-	reader := _io.GetReader(config.InputFilepath)
-	defer reader.Close()
-
-	// output
-	writer := _io.GetWriter(config.OutputFilepath)
-	defer writer.Close()
-
-	// hold all the reads from the file in here
-	reads := []fastq.FastqRead{}
-
-	// load all reads from file
-	fastq.LoadReads(&reads, reader, &config.RecordDelim)
-	log.Printf("%v reads loaded\n", len(reads))
-
-	// sort the fastq reads
-	_sort.SortReadsQual(&reads)
-	log.Printf("%v reads after sorting\n", len(reads))
-
-	// write the fastq reads
-	log.Printf("Writing to output file %v\n", config.OutputFilepath)
-	fastq.WriteReads(&reads, writer)
-
-	// save the order of the sorted reads to file
-	fastq.SaveOrder(&reads)
+type SortMethod struct {
+	CLIArg      string
+	Description string
+	Func        func(*[]fastq.FastqRead)
 }
 
 type Config struct {
-	SortMethod       string
-	SortMethods      []string
+	SortMethod       SortMethod
 	InputFilepath    string
 	InputFileSize    int64
 	OutputFilepath   string
@@ -177,40 +138,46 @@ type Config struct {
 	TimeStart        time.Time
 }
 
-const fastqHeaderChar byte = '@'
-const delim byte = '\n'
-const defaultSortMethod string = "alpha"
-const cpuProfileFilename string = "cpu.prof"
-const memProfileFilename string = "mem.prof"
-
 func main() {
 	timeStart := time.Now()
-	sortMethods := []string{defaultSortMethod, "gc", "qual"}
-	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethods)
 
-	// start profiler
-	cpuFile, memFile := Profiling(cpuProfileFilename, memProfileFilename)
-	defer cpuFile.Close()
-	defer memFile.Close()
-	defer pprof.StopCPUProfile()
-	defer pprof.WriteHeapProfile(memFile)
+	// parse the available sorting methods
+	sortMethodMap := map[string]SortMethod{
+		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
+		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
+		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
+	}
+	// minimal map for help text printing
+	sortMethodsDescr := map[string]string{}
+	for key, value := range sortMethodMap {
+		sortMethodsDescr[key] = value.Description
+	}
+	// help text
+	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethodsDescr)
 
 	// get command line args
 	printVersion := flag.Bool("v", false, "print version information")
-	sortMethod := flag.String("m", defaultSortMethod, "Fastq read sorting method. "+sortMethodOptionStr)
+	sortMethodArg := flag.String("m", defaultSortMethod, "Fastq read sorting method. "+sortMethodOptionStr)
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
 		PrintVersionAndQuit()
 	}
 	MinCliPosArgs(cliArgs, 2)
+
+	// get positional cli args
 	inputFilepath := cliArgs[0]
 	outputFilepath := cliArgs[1]
 
 	inputFileSize := LogFileSize(inputFilepath, "Input")
+
+	// initialize config
+	_, ok := sortMethodMap[*sortMethodArg]
+	if !ok {
+		log.Fatalf("ERROR: Unknown sort method: %v\n", *sortMethodArg)
+	}
 	config := Config{
-		SortMethod:       *sortMethod,
-		SortMethods:      sortMethods,
+		SortMethod:       sortMethodMap[*sortMethodArg],
 		InputFilepath:    inputFilepath,
 		InputFileSize:    inputFileSize,
 		OutputFilepath:   outputFilepath,
@@ -222,20 +189,16 @@ func main() {
 	//
 	//
 	//
+	// start profiler
+	cpuFile, memFile := Profiling(cpuProfileFilename, memProfileFilename)
+	defer cpuFile.Close()
+	defer memFile.Close()
+	defer pprof.StopCPUProfile()
+	defer pprof.WriteHeapProfile(memFile)
 
 	// insert modular sort methods here
-	log.Printf("Using sort method: %v\n", config.SortMethod)
-	switch config.SortMethod {
-	case "alpha":
-		RunAlphaSort(config)
-	case "gc":
-		RunGCSort(config)
-	case "qual":
-		RunQualSort(config)
-	default:
-		log.Printf("Using default sort method: %v\n", defaultSortMethod)
-		RunAlphaSort(config)
-	}
+	log.Printf("Using sort method: %v\n", config.SortMethod.CLIArg)
+	RunSort(config)
 
 	//
 	//
