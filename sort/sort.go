@@ -26,7 +26,6 @@ func SortReadsQual(reads *[]fastq.FastqRead) {
 // using custom sort methods
 //
 
-
 // FastqReadHeap is a wrapper for FastqRead slice to implement heap.Interface
 type FastqReadHeap struct {
 	reads         []fastq.FastqRead
@@ -85,4 +84,3 @@ func HeapSortGC(reads *[]fastq.FastqRead) {
 		return fr.GCContent
 	})
 }
-

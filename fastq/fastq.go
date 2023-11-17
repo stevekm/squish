@@ -19,6 +19,7 @@ type FastqRead struct {
 	QualityScores []byte
 	I             int // index order in the original file
 	GCContent     float64
+	Size          int // size in bytes of the read
 }
 
 func CalcGCContent(sequence *[]byte) float64 {
@@ -38,7 +39,6 @@ func CreateFastqRead(firstLine *[]byte, reader _io.InputFileReader, delim *byte,
 	// reads the next three lines from the reader,
 	// and combined with the first line,
 	// makes a new FastqRead entry
-
 	sequence, err := reader.Reader.ReadBytes(*delim)
 	if err != nil {
 		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)
@@ -59,6 +59,7 @@ func CreateFastqRead(firstLine *[]byte, reader _io.InputFileReader, delim *byte,
 		QualityScores: qualityScores,
 		I:             *i,
 		GCContent:     CalcGCContent(&sequence),
+		Size:          len(*firstLine) + len(sequence) + len(plus) + len(qualityScores),
 	}
 	return read
 }
@@ -75,7 +76,8 @@ func WriteReads(reads *[]FastqRead, writer _io.OutputFileWriter) {
 	log.Printf("Wrote %v reads\n", n)
 }
 
-func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte) {
+func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte) int {
+	var totalSize int = 0
 	var i int = 0
 	for {
 		// get the next line
@@ -87,9 +89,11 @@ func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte
 		if line[0] == '@' {
 			i = i + 1
 			read := CreateFastqRead(&line, reader, delim, &i)
+			totalSize = totalSize + read.Size
 			*readsBuffer = append(*readsBuffer, read)
 		}
 	}
+	return totalSize
 }
 
 func SaveOrder(readsBuffer *[]FastqRead, orderFilename string) {

@@ -107,8 +107,8 @@ func RunSort(config Config) {
 	reads := []fastq.FastqRead{}
 
 	// load all reads from file
-	fastq.LoadReads(&reads, reader, &config.RecordDelim)
-	log.Printf("%v reads loaded\n", len(reads))
+	totalByteSize := fastq.LoadReads(&reads, reader, &config.RecordDelim)
+	log.Printf("%v reads loaded (%v)\n", len(reads), bytefmt.ByteSize(uint64(totalByteSize)))
 
 	// sort the fastq reads
 	log.Printf("starting read sort")
