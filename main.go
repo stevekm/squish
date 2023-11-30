@@ -130,6 +130,7 @@ func GetSortingMethods() (map[string]SortMethod, string) {
 		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
 		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
 		"alpha-heap":      SortMethod{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence},
+		"kmer": SortMethod{"kmer", "Kmer sort", _sort.SortKmer},
 	}
 	// minimal map for help text printing
 	sortMethodsDescr := map[string]string{}
