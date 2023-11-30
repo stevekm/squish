@@ -6,7 +6,7 @@ import (
 	fastq "squish/fastq"
 )
 
-// using built-in Go sort methods
+// sort alphabetically on the fastq Sequence
 func SortReadsSequence(reads *[]fastq.FastqRead) {
 	// put the read sorting logic in here!
 	//
@@ -14,10 +14,12 @@ func SortReadsSequence(reads *[]fastq.FastqRead) {
 	go_sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].Sequence) < string((*reads)[j].Sequence) })
 }
 
+// sort based on the GC content of each read
 func SortReadsGC(reads *[]fastq.FastqRead) {
 	go_sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
 }
 
+// sort alphabetically on the Quality Scores
 func SortReadsQual(reads *[]fastq.FastqRead) {
 	go_sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].QualityScores) < string((*reads)[j].QualityScores) })
 }
@@ -73,12 +75,14 @@ func HeapSort(reads []fastq.FastqRead, comparisonKey func(fr fastq.FastqRead) in
 	}
 }
 
+// heap sort alphabetically on the fastq Sequence
 func HeapSortSequence(reads *[]fastq.FastqRead) {
 	HeapSort(*reads, func(fr fastq.FastqRead) interface{} {
 		return string(fr.Sequence)
 	})
 }
 
+// heap sort based on GC content
 func HeapSortGC(reads *[]fastq.FastqRead) {
 	HeapSort(*reads, func(fr fastq.FastqRead) interface{} {
 		return fr.GCContent

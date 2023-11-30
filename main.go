@@ -7,8 +7,6 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
-	fastq "squish/fastq"
-	_io "squish/io"
 	_sort "squish/sort"
 	"time"
 )
@@ -19,16 +17,13 @@ var Version = "foo-version"
 
 const fastqHeaderChar byte = '@'
 const delim byte = '\n'
-const defaultSortMethod string = "alpha"
-const defaultSortDescrption string = "Alphabetical sort on sequence"
 
-// const defaultSortFunc func() = _sort.SortReadsSequence
 const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
 const defaultOrderFilename string = "order.txt"
 
+// start CPU and Memory profiling
 func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
-	// start CPU and Memory profiling
 	//
 	// NOTES:
 	// https://pkg.go.dev/runtime/pprof
@@ -71,6 +66,7 @@ func GetFileSize(filepath string) (int64, error) {
 	return fi.Size(), nil
 }
 
+// print the file size to the console log
 func LogFileSize(filepath string, filetype string) int64 {
 	inputFileSize, err := GetFileSize(filepath)
 	if err != nil {
@@ -81,87 +77,25 @@ func LogFileSize(filepath string, filetype string) int64 {
 	return inputFileSize
 }
 
+// in case -v / --version CLI arg was used
 func PrintVersionAndQuit() {
 	fmt.Println(Version)
 	os.Exit(0)
 }
 
+// make sure enough positional args were used
 func MinCliPosArgs(args []string, n int) {
 	if len(args) < n {
 		log.Fatalf("Not enough cli args provided, %v args required, or use -h for help\n", n)
 	}
 }
 
-func RunSort(config Config) {
-	// run the chosen sorting method on the fastq file
 
-	// input
-	reader := _io.GetReader(config.InputFilepath)
-	defer reader.Close()
-
-	// output
-	writer := _io.GetWriter(config.OutputFilepath)
-	defer writer.Close()
-
-	// hold all the reads from the file in here
-	reads := []fastq.FastqRead{}
-
-	// load all reads from file
-	totalByteSize := fastq.LoadReads(&reads, reader, &config.RecordDelim)
-	log.Printf("%v reads loaded (%v)\n", len(reads), bytefmt.ByteSize(uint64(totalByteSize)))
-
-	// sort the fastq reads
-	log.Printf("starting read sort")
-	config.SortMethod.Func(&reads)
-	log.Printf("%v reads after sorting\n", len(reads))
-
-	// write the fastq reads
-	log.Printf("Writing to output file %v\n", config.OutputFilepath)
-	fastq.WriteReads(&reads, writer)
-
-	// save the order of the sorted reads to file
-	fastq.SaveOrder(&reads, config.OrderFilename)
-}
-
-func GetSortingMethods() (map[string]SortMethod, string) {
-	// parse the available sorting methods
-	sortMethodMap := map[string]SortMethod{
-		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
-		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
-		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
-		"alpha-heap":      SortMethod{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence},
-		"kmer": SortMethod{"kmer", "Kmer sort", _sort.SortKmer},
-	}
-	// minimal map for help text printing
-	sortMethodsDescr := map[string]string{}
-	for key, value := range sortMethodMap {
-		sortMethodsDescr[key] = value.Description
-	}
-	// help text
-	sortMethodOptionStr := fmt.Sprintf("Options: %v", sortMethodsDescr)
-	return sortMethodMap, sortMethodOptionStr
-}
-
-type SortMethod struct {
-	CLIArg      string
-	Description string
-	Func        func(*[]fastq.FastqRead)
-}
-
-type Config struct {
-	SortMethod       SortMethod
-	InputFilepath    string
-	InputFileSize    int64
-	OutputFilepath   string
-	RecordDelim      byte
-	RecordHeaderChar byte
-	TimeStart        time.Time
-	OrderFilename    string
-}
 
 func main() {
 	timeStart := time.Now()
-	sortMethodMap, sortMethodOptionStr := GetSortingMethods()
+	sortMethodMap, sortMethodOptionStr := _sort.GetSortingMethods()
+	defaultSortMethod, _ := _sort.GetDefaultSortMethod()
 
 	// get command line args
 	printVersion := flag.Bool("v", false, "print version information")
@@ -187,7 +121,7 @@ func main() {
 	if !ok {
 		log.Fatalf("ERROR: Unknown sort method: %v\n", *sortMethodArg)
 	}
-	config := Config{
+	config := _sort.Config{
 		SortMethod:       sortMethodMap[*sortMethodArg],
 		InputFilepath:    inputFilepath,
 		InputFileSize:    inputFileSize,
@@ -208,9 +142,8 @@ func main() {
 	defer pprof.StopCPUProfile()
 	defer pprof.WriteHeapProfile(memFile)
 
-	// insert sort methods here
-	log.Printf("Using sort method: %v\n", config.SortMethod.CLIArg)
-	RunSort(config)
+	// run the sort methods
+	config.Run()
 
 	//
 	//
