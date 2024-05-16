@@ -15,8 +15,8 @@ import (
 // -ldflags="-X 'main.Version=someversion'"
 var Version = "foo-version"
 
-const fastqHeaderChar byte = '@'
-const delim byte = '\n'
+// const fastqHeaderChar byte = '@'
+// const delim byte = '\n'
 
 const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
@@ -90,12 +90,10 @@ func MinCliPosArgs(args []string, n int) {
 	}
 }
 
-
-
 func main() {
 	timeStart := time.Now()
 	sortMethodMap, sortMethodOptionStr := _sort.GetSortingMethods()
-	defaultSortMethod, _ := _sort.GetDefaultSortMethod()
+	defaultSortMethod := _sort.DefaultSortMethod
 
 	// get command line args
 	printVersion := flag.Bool("v", false, "print version information")
@@ -126,8 +124,8 @@ func main() {
 		InputFilepath:    inputFilepath,
 		InputFileSize:    inputFileSize,
 		OutputFilepath:   outputFilepath,
-		RecordDelim:      delim,
-		RecordHeaderChar: fastqHeaderChar,
+		// RecordDelim:      delim,
+		// RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
 		OrderFilename:    *orderFilename,
 	}

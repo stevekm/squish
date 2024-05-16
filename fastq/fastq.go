@@ -8,7 +8,14 @@ import (
 	"os"
 	_io "squish/io"
 	"strconv"
+	"fmt"
 )
+
+var FastqDelim byte = '\n'
+// func GetDelim() byte {
+// 	return FastqDelim
+// }
+// const FastqHeaderChar byte = '@'
 
 // NOTE: fastq read methods https://pkg.go.dev/github.com/biogo/biogo/io/seqio/fastq#Reader.Read
 // https://en.wikipedia.org/wiki/FASTQ_format
@@ -21,6 +28,65 @@ type FastqRead struct {
 	GCContent     float64
 	Size          int // size in bytes of the read
 }
+
+type FastqReader struct {
+	Reader _io.InputFileReader
+	NRead int
+	BytesRead int
+}
+
+// get the next fastq read from the reader
+func (fqreader *FastqReader) Next() (FastqRead, error) {
+	var read FastqRead
+	var err error
+	var line []byte
+
+	// get the next line
+	line, err = fqreader.Reader.Reader.ReadBytes(FastqDelim) // includes the delim in the output line !!
+	if err != nil {
+		return read, err // end of file returns io.EOF ; caller needs to 'break' when it detects this
+	}
+
+	// check if its a FASTQ header line
+	if line[0] != '@' {
+		err = NewFastqReadError(fmt.Sprintf("Error parsing fastq reader header line: %v\nLine does not start with '@'", line))
+		return read, err
+	} else {
+		// increment the number of reads counter
+		fqreader.NRead = fqreader.NRead + 1
+		// build the read from the next three lines
+		read = CreateFastqRead(&line, fqreader.Reader, &FastqDelim, &fqreader.NRead)
+		// increment the number of bytes read
+		fqreader.BytesRead = fqreader.BytesRead + read.Size
+	}
+
+	return read, err
+}
+
+func NewFastqReader(inputFilepath string) FastqReader {
+	reader := _io.GetReader(inputFilepath)
+	fastqReader := FastqReader{Reader: reader}
+	return fastqReader
+}
+
+
+type FastqReadError struct {
+	message string
+}
+func (e *FastqReadError) Error() string {
+    return e.message
+}
+func NewFastqReadError(message string) error {
+    return &FastqReadError{message: message}
+}
+
+
+
+
+
+
+
+
 
 func CalcGCContent(sequence *[]byte) float64 {
 	// Calculation for GC content of the DNA sequence
@@ -35,10 +101,12 @@ func CalcGCContent(sequence *[]byte) float64 {
 	return gcContent
 }
 
+
+// reads the next three lines from the reader,
+// and combined with the first line,
+// makes a new FastqRead entry
+// TODO: this should return an error as well instead of throwing one
 func CreateFastqRead(firstLine *[]byte, reader _io.InputFileReader, delim *byte, i *int) FastqRead {
-	// reads the next three lines from the reader,
-	// and combined with the first line,
-	// makes a new FastqRead entry
 	sequence, err := reader.Reader.ReadBytes(*delim)
 	if err != nil {
 		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)

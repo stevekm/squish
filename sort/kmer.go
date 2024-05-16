@@ -3,9 +3,11 @@ package sort
 // parsing for KMers for KMer sorting
 
 import (
-	fastq "squish/fastq"
-	"log"
 	"fmt"
+	"log"
+	"io"
+	fastq "squish/fastq"
+	"code.cloudfoundry.org/bytefmt"
 )
 
 // Pair represents a k-mer and its associated read
@@ -14,10 +16,34 @@ type Pair struct {
 	Read *fastq.FastqRead
 }
 
-
-
-func SortKmer(reads *[]fastq.FastqRead){
+func SortKmer(reads *[]fastq.FastqRead, config Config) {
 	log.Println("---- USING KMER SORT ----")
+	// reads = nil
+
+	// input
+	fastqReader := fastq.NewFastqReader(config.InputFilepath)
+	defer fastqReader.Reader.Close()
+
+	// reads := []fastq.FastqRead{}
+
+	for {
+		read, err := fastqReader.Next()
+		if err == io.EOF {
+			break
+
+		}
+		if err != nil {
+			// TODO: do something about error here
+			log.Fatalf("Error reading lines from fastq file: %v", err)
+		}
+
+		*reads = append(*reads, read)
+	}
+	log.Printf("%v reads loaded (%v)\n", fastqReader.NRead, bytefmt.ByteSize(uint64(fastqReader.BytesRead)))
+
+	// // output
+	// writer := _io.GetWriter(config.OutputFilepath)
+	// defer writer.Close()
 
 	kmersList := []Pair{}
 
@@ -34,6 +60,9 @@ func SortKmer(reads *[]fastq.FastqRead){
 	for _, kmer := range sortedKmersList {
 		fmt.Printf("KMER: %v, READ: %v\n", kmer.Kmer, string(kmer.Read.Sequence))
 	}
+
+
+	log.Println("---- DONE KMER SORT ----")
 }
 
 func ExtractKmers(read string) []string {
@@ -44,7 +73,6 @@ func ExtractKmers(read string) []string {
 	}
 	return kmers
 }
-
 
 // RadixSortKmers sorts k-mers using radix sort
 func RadixSortKmers(kmerReadPairs []Pair) []Pair {
@@ -92,7 +120,6 @@ func RadixSortKmers(kmerReadPairs []Pair) []Pair {
 			// 		kmerReadPairsMap[pair.Read] = true
 			// 	}
 			// }
-
 
 		}
 	}

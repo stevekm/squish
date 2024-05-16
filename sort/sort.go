@@ -6,8 +6,12 @@ import (
 	fastq "squish/fastq"
 )
 
+// NOTE: all sort methods need to have *[]fastq.FastqRead, Config input args
+// to satisfy the compiler's need for static typing function signatures for the Config.Run methods
+// methods that dont use one or the other can just take dummy input object
+
 // sort alphabetically on the fastq Sequence
-func SortReadsSequence(reads *[]fastq.FastqRead) {
+func SortReadsSequence(reads *[]fastq.FastqRead, config Config) {
 	// put the read sorting logic in here!
 	//
 	// sort in-place based on the string of the sequence
@@ -15,12 +19,12 @@ func SortReadsSequence(reads *[]fastq.FastqRead) {
 }
 
 // sort based on the GC content of each read
-func SortReadsGC(reads *[]fastq.FastqRead) {
+func SortReadsGC(reads *[]fastq.FastqRead, config Config) {
 	go_sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
 }
 
 // sort alphabetically on the Quality Scores
-func SortReadsQual(reads *[]fastq.FastqRead) {
+func SortReadsQual(reads *[]fastq.FastqRead, config Config) {
 	go_sort.Slice((*reads), func(i, j int) bool { return string((*reads)[i].QualityScores) < string((*reads)[j].QualityScores) })
 }
 
@@ -76,7 +80,7 @@ func HeapSort(reads []fastq.FastqRead, comparisonKey func(fr fastq.FastqRead) in
 }
 
 // heap sort alphabetically on the fastq Sequence
-func HeapSortSequence(reads *[]fastq.FastqRead) {
+func HeapSortSequence(reads *[]fastq.FastqRead, config Config) {
 	HeapSort(*reads, func(fr fastq.FastqRead) interface{} {
 		return string(fr.Sequence)
 	})
