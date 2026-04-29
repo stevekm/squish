@@ -112,7 +112,18 @@ workflow {
         def output_arg = json["output"]["argument"]
         def input_arg = json["input"]["path"]
 
-        return [
+        header = [
+            "sample_id",
+            "sort_method",
+            "sort_engine",
+            "uncompressed_bytes",
+            "output_size_bytes",
+            "size_difference_bytes",
+            "size_reduction_ratio",
+            "output_arg",
+            "input_arg"
+            ].join(",")
+        line = [
             sample_id,
             sort_method,
             sort_engine,
@@ -120,7 +131,11 @@ workflow {
             output_size_bytes,
             size_difference_bytes,
             size_reduction_ratio,
-            output_arg, input_arg
+            output_arg,
+            input_arg
             ].join(",")
-    }.collectFile(name: 'report.csv', storeDir: "${params.outdir}", newLine: true)
+        output = [header, line].join("\n")
+
+        return output
+    }.collectFile(name: 'report.csv', storeDir: "${params.outdir}", newLine: true, keepHeader: true)
 }
