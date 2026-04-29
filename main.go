@@ -31,6 +31,9 @@ const defaultMemProfileFilename string = "mem.prof"
 const defaultOrderFilename string = "order.txt"
 const defaultProfileDirnameBase string = "profile"
 const defaultOutputDirNameBase string = "output"
+const defaultSortEngine string = "memory"
+const defaultBucketStrategy string = "auto"
+const defaultExternalBucketCount int = 512
 
 func DefaultLogLevel() slog.Level {
 	return slog.LevelDebug
@@ -148,14 +151,38 @@ func RunSort(config Config) {
 	fastq.SaveOrder(&reads, config.OrderFilename)
 }
 
+func RunExternalSort(config Config) {
+	// Keep temporary buckets under the configured output directory and isolate
+	// each sort method in its own temp subdirectory.
+	tempDir := filepath.Join(config.TempDir, config.SortMethod.CLIArg)
+	sortConfig := _sort.ExternalBucketConfig{
+		InputFilepath:  config.InputFilepath,
+		OutputFilepath: config.OutputFilepath,
+		OrderFilepath:  config.OrderFilename,
+		TempDir:        tempDir,
+		RecordDelim:    config.RecordDelim,
+	}
+	// Bucket selection is deliberately separate from the sort strategy so the
+	// CLI can compose different file-backed layouts with the same comparator.
+	bucketer := GetBucketStrategy(config)
+	slog.Debug(
+		"starting external bucket sort",
+		"sorter", config.SortMethod.Strategy.Name(),
+		"bucketer", bucketer.Name(),
+		"buckets", bucketer.BucketCount(),
+		"temp_dir", tempDir,
+	)
+	_sort.MustRunExternalBucketSort(sortConfig, config.SortMethod.Strategy, bucketer)
+}
+
 func GetSortingMethods() (map[string]SortMethod, string) {
 	// parse the available sorting methods
 	sortMethodMap := map[string]SortMethod{
-		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence}, // alpha
-		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC},
-		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual},
-		"alpha-heap":      SortMethod{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence},
-		"clump":           SortMethod{"clump", "Clump-style read clustering for better gzip compression", _sort.SortReadsClump},
+		defaultSortMethod: SortMethod{defaultSortMethod, defaultSortDescrption, _sort.SortReadsSequence, _sort.AlphaSort{}}, // alpha
+		"gc":              SortMethod{"gc", "GC Content Sort", _sort.SortReadsGC, _sort.GCSort{}},
+		"qual":            SortMethod{"qual", "Quality score sort", _sort.SortReadsQual, _sort.QualitySort{}},
+		"alpha-heap":      SortMethod{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence, _sort.AlphaSort{}},
+		"clump":           SortMethod{"clump", "Clump-style read clustering for better gzip compression", _sort.SortReadsClump, _sort.ClumpSort{}},
 	}
 	// minimal map for help text printing
 	sortMethodsDescr := map[string]string{}
@@ -170,7 +197,10 @@ func GetSortingMethods() (map[string]SortMethod, string) {
 type SortMethod struct {
 	CLIArg      string
 	Description string
-	Func        func(*[]fastq.FastqRead)
+	// Func is the legacy in-memory implementation.
+	Func func(*[]fastq.FastqRead)
+	// Strategy is the comparator shared by in-memory and external engines.
+	Strategy _sort.SortStrategy
 }
 
 type Config struct {
@@ -182,6 +212,31 @@ type Config struct {
 	RecordHeaderChar byte
 	TimeStart        time.Time
 	OrderFilename    string
+	OutputDir        string
+	SortEngine       string
+	BucketStrategy   string
+	BucketCount      int
+	TempDir          string
+}
+
+func GetBucketStrategy(config Config) _sort.BucketStrategy {
+	// "auto" chooses the safest default for the selected sorter. Explicit
+	// strategies are useful for experiments and profiling.
+	switch config.BucketStrategy {
+	case "auto":
+		return _sort.DefaultBucketStrategy(config.SortMethod.Strategy, config.BucketCount)
+	case "sequence-prefix":
+		return _sort.NewSequencePrefixBuckets(2)
+	case "quality-prefix":
+		return _sort.NewQualityPrefixBuckets(1)
+	case "gc-range":
+		return _sort.NewGCRangeBuckets(config.BucketCount)
+	case "hash":
+		return _sort.NewHashBuckets(config.BucketCount)
+	default:
+		log.Fatalf("ERROR: Unknown bucket strategy: %v\n", config.BucketStrategy)
+	}
+	return nil
 }
 
 func main() {
@@ -197,6 +252,10 @@ func main() {
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
 	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
 	outputDirArg := flag.String("outdir", defaultOutputDirNameBase, "Output dir")
+	sortEngine := flag.String("engine", defaultSortEngine, "Sort engine. Options: memory, external")
+	bucketStrategy := flag.String("bucket", defaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash")
+	bucketCount := flag.Int("buckets", defaultExternalBucketCount, "External bucket count for bucket strategies that use a configurable count")
+	tempDirArg := flag.String("tempdir", "tmp", "External bucket temp directory under the output dir")
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
@@ -209,6 +268,7 @@ func main() {
 	outputDir := filepath.Clean(*outputDirArg)
 	outputFilepath := OutputPath(outputDir, cliArgs[1])
 	orderFilepath := OutputPath(outputDir, *orderFilename)
+	tempDir := OutputPath(outputDir, *tempDirArg)
 
 	inputFileSize := LogFileSize(inputFilepath, "Input")
 
@@ -226,6 +286,11 @@ func main() {
 		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
 		OrderFilename:    orderFilepath,
+		OutputDir:        outputDir,
+		SortEngine:       *sortEngine,
+		BucketStrategy:   *bucketStrategy,
+		BucketCount:      *bucketCount,
+		TempDir:          tempDir,
 	}
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -264,7 +329,14 @@ func main() {
 
 	// insert sort methods here
 	slog.Debug("using sort method", "method", config.SortMethod.CLIArg)
-	RunSort(config)
+	switch config.SortEngine {
+	case "memory":
+		RunSort(config)
+	case "external":
+		RunExternalSort(config)
+	default:
+		log.Fatalf("ERROR: Unknown sort engine: %v\n", config.SortEngine)
+	}
 
 	//
 	//

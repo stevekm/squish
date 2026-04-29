@@ -137,6 +137,33 @@ func CreateFastqRead(idOffset int, idSize int, reader _io.InputFileReader, delim
 	return read
 }
 
+// ReadNextRead streams one FASTQ record from reader into a small per-record
+// arena. The external bucket engine uses this to classify and write records to
+// disk without retaining the rest of the input in memory.
+func ReadNextRead(reader _io.InputFileReader, delim *byte, i *int) (FastqRead, int, error) {
+	arena := &FastqArena{}
+	for {
+		idOffset, idSize, err := ReadLineIntoArena(reader, *delim, arena)
+		if err != nil {
+			return FastqRead{}, 0, err
+		}
+
+		line := arena.Data[idOffset : idOffset+idSize]
+		if len(line) == 0 || line[0] != '@' {
+			// Skip non-header lines and reset the arena so stray bytes are not
+			// retained in the next candidate record.
+			arena = &FastqArena{}
+			continue
+		}
+
+		// CreateFastqRead reads the following sequence, plus, and quality lines
+		// into the same per-record arena.
+		*i = *i + 1
+		read := CreateFastqRead(idOffset, idSize, reader, delim, i, arena)
+		return read, read.RecordSize, nil
+	}
+}
+
 func WriteReads(reads *[]FastqRead, writer _io.OutputFileWriter) {
 	var n int = 0
 	for _, read := range *reads {

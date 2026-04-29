@@ -1,7 +1,6 @@
 package sort
 
 import (
-	"bytes"
 	go_sort "sort"
 	fastq "squish/fastq"
 )
@@ -11,17 +10,16 @@ func SortReadsSequence(reads *[]fastq.FastqRead) {
 	// put the read sorting logic in here!
 	//
 	// sort in-place based on the string of the sequence
-	go_sort.Slice((*reads), func(i, j int) bool {
-		return bytes.Compare((*reads)[i].Sequence(), (*reads)[j].Sequence()) < 0
-	})
+	sorter := AlphaSort{}
+	go_sort.Slice((*reads), func(i, j int) bool { return sorter.Less((*reads)[i], (*reads)[j]) })
 }
 
 func SortReadsGC(reads *[]fastq.FastqRead) {
-	go_sort.Slice((*reads), func(i, j int) bool { return (*reads)[i].GCContent < (*reads)[j].GCContent })
+	sorter := GCSort{}
+	go_sort.Slice((*reads), func(i, j int) bool { return sorter.Less((*reads)[i], (*reads)[j]) })
 }
 
 func SortReadsQual(reads *[]fastq.FastqRead) {
-	go_sort.Slice((*reads), func(i, j int) bool {
-		return bytes.Compare((*reads)[i].QualityScores(), (*reads)[j].QualityScores()) < 0
-	})
+	sorter := QualitySort{}
+	go_sort.Slice((*reads), func(i, j int) bool { return sorter.Less((*reads)[i], (*reads)[j]) })
 }

@@ -45,18 +45,26 @@ build-all:
 # make test-run-all FASTQIN=data/test1.fastq.gz
 #
 # input/SRR14575325.gz9.fastq.gz
-FASTQIN:=data/SRR6357076_1.fastq.gz
+# FASTQIN:=data/SRR6357076_1.fastq.gz
+# FASTQOUT:=squish.SRR6357076_1
+FASTQIN:=data/SRX1603629_T1_1.fastq.gz
+FASTQOUT:=squish.SRX1603629_T1_1
 OUTDIR:=output
-FASTQOUT:=squish.SRR6357076_1
+ENGINE:=memory
+BUCKET:=auto
+BUCKETS:=512
 $(OUTDIR):
 	mkdir -p "$(OUTDIR)"
 test-run-all: build $(BIN) $(OUTDIR)
 	set -x ; \
 	for i in alpha gc qual alpha-heap clump; do \
-	echo ">>> RUNNING: $$i" ; \
-	./$(BIN) -outdir "$(OUTDIR)" -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz ; \
+	echo ">>> RUNNING: method=$$i engine=$(ENGINE) bucket=$(BUCKET) buckets=$(BUCKETS)" ; \
+	./$(BIN) -outdir "$(OUTDIR)" -engine "$(ENGINE)" -bucket "$(BUCKET)" -buckets "$(BUCKETS)" -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz ; \
 	$(MAKE) pdf PROF="$(OUTDIR)/profile.$$i/mem.$$i.prof" PDF="$(OUTDIR)/profile.$$i/memprofile.$$i.pdf" ; \
 	done
+
+test-run-all-external:
+	$(MAKE) test-run-all ENGINE=external
 
 # docker build -t stevekm/squish:latest .
 DOCKER_TAG:=stevekm/squish:$(GIT_TAG)

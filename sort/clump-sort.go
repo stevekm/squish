@@ -31,7 +31,7 @@ func SortReadsClump(reads *[]fastq.FastqRead) {
 	for _, key := range bucketKeys {
 		bucket := buckets[key]
 		go_sort.Slice(bucket, func(i, j int) bool {
-			return clumpCompare(bucket[i], bucket[j])
+			return ClumpCompare(bucket[i], bucket[j])
 		})
 		sortedReads = append(sortedReads, bucket...)
 	}
@@ -55,7 +55,7 @@ func clumpBucketKey(read *fastq.FastqRead, prefixLen int) string {
 	return string(seq) + "|" + string(qual)
 }
 
-func clumpCompare(a, b fastq.FastqRead) bool {
+func ClumpCompare(a, b fastq.FastqRead) bool {
 	// Prefer reads with identical full sequence content.
 	if c := bytes.Compare(a.Sequence(), b.Sequence()); c != 0 {
 		return c < 0

@@ -1,7 +1,6 @@
 package sort
 
 import (
-	"bytes"
 	"container/heap"
 	fastq "squish/fastq"
 )
@@ -43,13 +42,11 @@ func HeapSort(reads []fastq.FastqRead, comparisonLess func(a fastq.FastqRead, b 
 }
 
 func HeapSortSequence(reads *[]fastq.FastqRead) {
-	HeapSort(*reads, func(a fastq.FastqRead, b fastq.FastqRead) bool {
-		return bytes.Compare(a.Sequence(), b.Sequence()) < 0
-	})
+	sorter := AlphaSort{}
+	HeapSort(*reads, sorter.Less)
 }
 
 func HeapSortGC(reads *[]fastq.FastqRead) {
-	HeapSort(*reads, func(a fastq.FastqRead, b fastq.FastqRead) bool {
-		return a.GCContent < b.GCContent
-	})
+	sorter := GCSort{}
+	HeapSort(*reads, sorter.Less)
 }
