@@ -183,13 +183,27 @@ func (b GCRangeBuckets) OrderedFor(sorter SortStrategy) bool {
 type HashBuckets struct {
 	name        string
 	bucketCount int
+	keyFunc     func(fastq.FastqRead) []byte
 }
 
 func NewHashBuckets(bucketCount int) HashBuckets {
+	return newHashBuckets("hash", bucketCount, func(read fastq.FastqRead) []byte {
+		key := make([]byte, 0, len(read.Sequence())+len(read.QualityScores()))
+		key = append(key, read.Sequence()...)
+		key = append(key, read.QualityScores()...)
+		return key
+	})
+}
+
+func NewClumpBuckets(bucketCount int) HashBuckets {
+	return newHashBuckets("clump-minimizer", bucketCount, ClumpKey)
+}
+
+func newHashBuckets(name string, bucketCount int, keyFunc func(fastq.FastqRead) []byte) HashBuckets {
 	if bucketCount < 1 {
 		bucketCount = 1
 	}
-	return HashBuckets{name: "hash", bucketCount: bucketCount}
+	return HashBuckets{name: name, bucketCount: bucketCount, keyFunc: keyFunc}
 }
 
 func (b HashBuckets) Name() string { return b.name }
@@ -198,8 +212,7 @@ func (b HashBuckets) BucketCount() int { return b.bucketCount }
 
 func (b HashBuckets) BucketID(read fastq.FastqRead) int {
 	h := fnv.New32a()
-	h.Write(read.Sequence())
-	h.Write(read.QualityScores())
+	h.Write(b.keyFunc(read))
 	return int(h.Sum32() % uint32(b.bucketCount))
 }
 
@@ -237,7 +250,7 @@ func DefaultBucketStrategy(sorter SortStrategy, bucketCount int) BucketStrategy 
 	case "qual":
 		return NewQualityPrefixBuckets(1)
 	case "clump":
-		return NewHashBuckets(bucketCount)
+		return NewClumpBuckets(bucketCount)
 	default:
 		return NewHashBuckets(bucketCount)
 	}

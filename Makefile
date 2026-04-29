@@ -45,10 +45,10 @@ build-all:
 # make test-run-all FASTQIN=data/test1.fastq.gz
 #
 # input/SRR14575325.gz9.fastq.gz
-# FASTQIN:=data/SRR6357076_1.fastq.gz
-# FASTQOUT:=squish.SRR6357076_1
-FASTQIN:=data/SRX1603629_T1_1.fastq.gz
-FASTQOUT:=squish.SRX1603629_T1_1
+FASTQIN:=data/SRR6357076_1.fastq.gz
+FASTQOUT:=squish.SRR6357076_1
+# FASTQIN:=data/SRX1603629_T1_1.fastq.gz
+# FASTQOUT:=squish.SRX1603629_T1_1
 OUTDIR:=output
 ENGINE:=memory
 BUCKET:=auto
