@@ -11,3 +11,5 @@ order.txt
 input
 output
 order.*
+.DS_Store
+.gocache
