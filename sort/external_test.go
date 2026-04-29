@@ -27,8 +27,12 @@ func TestRunExternalBucketSortAlpha(t *testing.T) {
 		TempDir:        tempDir,
 		RecordDelim:    '\n',
 	}
-	if err := RunExternalBucketSort(config, AlphaSort{}, NewSequencePrefixBuckets(1)); err != nil {
+	stats, err := RunExternalBucketSort(config, AlphaSort{}, NewSequencePrefixBuckets(1))
+	if err != nil {
 		t.Fatalf("external sort: %v", err)
+	}
+	if stats.Reads != 2 {
+		t.Fatalf("reads = %d, want 2", stats.Reads)
 	}
 
 	got := readGzipFile(t, outputPath)

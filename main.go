@@ -2,6 +2,7 @@ package main
 
 import (
 	"code.cloudfoundry.org/bytefmt"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +30,7 @@ const defaultSortDescrption string = "Alphabetical sort on sequence"
 const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
 const defaultOrderFilename string = "order.txt"
+const defaultReportFilename string = "report.json"
 const defaultProfileDirnameBase string = "profile"
 const defaultOutputDirNameBase string = "output"
 const defaultSortEngine string = "memory"
@@ -100,6 +102,70 @@ func LogFileSize(filepath string, filetype string) int64 {
 	return inputFileSize
 }
 
+type RunStats struct {
+	Reads         int
+	Bytes         int
+	BucketsUsed   int
+	BucketCount   int
+	BucketName    string
+	BucketTempDir string
+}
+
+type FileReport struct {
+	Path       string `json:"path"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+	SizeHuman  string `json:"size_human,omitempty"`
+	Descriptor string `json:"descriptor,omitempty"`
+}
+
+type ProfileReport struct {
+	Directory string `json:"directory"`
+	CPUPath   string `json:"cpu_path"`
+	MemPath   string `json:"mem_path"`
+}
+
+type BucketReport struct {
+	Strategy   string `json:"strategy"`
+	Count      int    `json:"count"`
+	Used       int    `json:"used"`
+	TempDir    string `json:"temp_dir,omitempty"`
+	OrderedFor bool   `json:"ordered_for_sorter"`
+}
+
+type Report struct {
+	Version              string        `json:"version"`
+	StartedAt            string        `json:"started_at"`
+	FinishedAt           string        `json:"finished_at"`
+	Duration             string        `json:"duration"`
+	DurationMilliseconds int64         `json:"duration_ms"`
+	SortMethod           string        `json:"sort_method"`
+	SortDescription      string        `json:"sort_description"`
+	SortEngine           string        `json:"sort_engine"`
+	Input                FileReport    `json:"input"`
+	Output               FileReport    `json:"output"`
+	OrderFile            FileReport    `json:"order_file"`
+	ReportFile           FileReport    `json:"report_file"`
+	Profile              ProfileReport `json:"profile"`
+	Bucket               *BucketReport `json:"bucket,omitempty"`
+	Reads                int           `json:"reads"`
+	UncompressedBytes    int           `json:"uncompressed_bytes"`
+	OutputSizeBytes      int64         `json:"output_size_bytes"`
+	SizeDifferenceBytes  int64         `json:"size_difference_bytes"`
+	CompressionRatio     float64       `json:"compression_ratio"`
+	SizeReductionRatio   float64       `json:"size_reduction_ratio"`
+}
+
+func WriteReport(report Report, reportPath string) {
+	reportJSON, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		log.Fatalf("ERROR: could not marshal report: %v\n", err)
+	}
+	if err := os.WriteFile(reportPath, reportJSON, 0644); err != nil {
+		log.Fatalf("ERROR: could not write report file %v: %v\n", reportPath, err)
+	}
+	slog.Debug("report written", "path", reportPath)
+}
+
 func PrintVersionAndQuit() {
 	fmt.Println(Version)
 	os.Exit(0)
@@ -120,7 +186,7 @@ func OutputPath(outputDir string, itemPath string) string {
 	return outputPath
 }
 
-func RunSort(config Config) {
+func RunSort(config Config) RunStats {
 	// run the chosen sorting method on the fastq file
 
 	// input
@@ -149,9 +215,14 @@ func RunSort(config Config) {
 
 	// save the order of the sorted reads to file
 	fastq.SaveOrder(&reads, config.OrderFilename)
+
+	return RunStats{
+		Reads: len(reads),
+		Bytes: totalByteSize,
+	}
 }
 
-func RunExternalSort(config Config) {
+func RunExternalSort(config Config) RunStats {
 	// Keep temporary buckets under the configured output directory and isolate
 	// each sort method in its own temp subdirectory.
 	tempDir := filepath.Join(config.TempDir, config.SortMethod.CLIArg)
@@ -172,7 +243,18 @@ func RunExternalSort(config Config) {
 		"buckets", bucketer.BucketCount(),
 		"temp_dir", tempDir,
 	)
-	_sort.MustRunExternalBucketSort(sortConfig, config.SortMethod.Strategy, bucketer)
+	stats, err := _sort.RunExternalBucketSort(sortConfig, config.SortMethod.Strategy, bucketer)
+	if err != nil {
+		log.Fatalf("ERROR: external bucket sort failed: %v\n", err)
+	}
+	return RunStats{
+		Reads:         stats.Reads,
+		Bytes:         stats.Bytes,
+		BucketsUsed:   stats.BucketsUsed,
+		BucketCount:   stats.BucketCount,
+		BucketName:    stats.BucketerName,
+		BucketTempDir: stats.TempDir,
+	}
 }
 
 func GetSortingMethods() (map[string]SortMethod, string) {
@@ -212,11 +294,15 @@ type Config struct {
 	RecordHeaderChar byte
 	TimeStart        time.Time
 	OrderFilename    string
+	ReportFilename   string
 	OutputDir        string
 	SortEngine       string
 	BucketStrategy   string
 	BucketCount      int
 	TempDir          string
+	ProfileDir       string
+	CPUProfilePath   string
+	MemProfilePath   string
 }
 
 func GetBucketStrategy(config Config) _sort.BucketStrategy {
@@ -251,6 +337,7 @@ func main() {
 	cpuProfileFilename := flag.String("cpuProf", defaultCpuProfileFilename, "CPU profile filename")
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
 	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
+	reportFilename := flag.String("reportFile", defaultReportFilename, "JSON report filename")
 	outputDirArg := flag.String("outdir", defaultOutputDirNameBase, "Output dir")
 	sortEngine := flag.String("engine", defaultSortEngine, "Sort engine. Options: memory, external")
 	bucketStrategy := flag.String("bucket", defaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash")
@@ -268,6 +355,7 @@ func main() {
 	outputDir := filepath.Clean(*outputDirArg)
 	outputFilepath := OutputPath(outputDir, cliArgs[1])
 	orderFilepath := OutputPath(outputDir, *orderFilename)
+	reportFilepath := OutputPath(outputDir, *reportFilename)
 	tempDir := OutputPath(outputDir, *tempDirArg)
 
 	inputFileSize := LogFileSize(inputFilepath, "Input")
@@ -286,6 +374,7 @@ func main() {
 		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
 		OrderFilename:    orderFilepath,
+		ReportFilename:   reportFilepath,
 		OutputDir:        outputDir,
 		SortEngine:       *sortEngine,
 		BucketStrategy:   *bucketStrategy,
@@ -308,6 +397,11 @@ func main() {
 		log.Fatalf("ERROR: could not create order file directory %v: %v\n", orderFileDir, err)
 	}
 
+	reportFileDir := filepath.Dir(config.ReportFilename)
+	if err := os.MkdirAll(reportFileDir, 0755); err != nil {
+		log.Fatalf("ERROR: could not create report file directory %v: %v\n", reportFileDir, err)
+	}
+
 	profileDirNameBase := OutputPath(outputDir, defaultProfileDirnameBase+"."+config.SortMethod.CLIArg)
 	if err := os.MkdirAll(profileDirNameBase, 0755); err != nil {
 		log.Fatalf("ERROR: could not create profile directory %v: %v\n", profileDirNameBase, err)
@@ -316,6 +410,9 @@ func main() {
 
 	cpuProfilePath := OutputPath(profileDirNameBase, *cpuProfileFilename)
 	memProfilePath := OutputPath(profileDirNameBase, *memProfileFilename)
+	config.ProfileDir = profileDirNameBase
+	config.CPUProfilePath = cpuProfilePath
+	config.MemProfilePath = memProfilePath
 
 	//
 	//
@@ -329,11 +426,12 @@ func main() {
 
 	// insert sort methods here
 	slog.Debug("using sort method", "method", config.SortMethod.CLIArg)
+	var runStats RunStats
 	switch config.SortEngine {
 	case "memory":
-		RunSort(config)
+		runStats = RunSort(config)
 	case "external":
-		RunExternalSort(config)
+		runStats = RunExternalSort(config)
 	default:
 		log.Fatalf("ERROR: Unknown sort engine: %v\n", config.SortEngine)
 	}
@@ -348,11 +446,67 @@ func main() {
 	outputFileSize := LogFileSize(config.OutputFilepath, "Output")
 	sizeDifference := config.InputFileSize - outputFileSize
 	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
+	compressionRatio := 0.0
+	sizeReductionRatio := 0.0
+	if config.InputFileSize > 0 {
+		compressionRatio = float64(outputFileSize) / float64(config.InputFileSize)
+		sizeReductionRatio = float64(sizeDifference) / float64(config.InputFileSize)
+	}
+	var bucketReport *BucketReport
+	if config.SortEngine == "external" {
+		bucketer := GetBucketStrategy(config)
+		bucketReport = &BucketReport{
+			Strategy:   runStats.BucketName,
+			Count:      runStats.BucketCount,
+			Used:       runStats.BucketsUsed,
+			TempDir:    runStats.BucketTempDir,
+			OrderedFor: bucketer.OrderedFor(config.SortMethod.Strategy),
+		}
+	}
 
 	slog.Debug(
 		"size reduced",
 		"bytes", sizeDifferenceBytes,
-		"ratio", float64(sizeDifference)/float64(inputFileSize),
+		"ratio", sizeReductionRatio,
 		"duration", timeDuration,
 	)
+
+	WriteReport(Report{
+		Version:              Version,
+		StartedAt:            config.TimeStart.Format(time.RFC3339Nano),
+		FinishedAt:           timeStop.Format(time.RFC3339Nano),
+		Duration:             timeDuration.String(),
+		DurationMilliseconds: timeDuration.Milliseconds(),
+		SortMethod:           config.SortMethod.CLIArg,
+		SortDescription:      config.SortMethod.Description,
+		SortEngine:           config.SortEngine,
+		Input: FileReport{
+			Path:      config.InputFilepath,
+			SizeBytes: config.InputFileSize,
+			SizeHuman: bytefmt.ByteSize(uint64(config.InputFileSize)),
+		},
+		Output: FileReport{
+			Path:      config.OutputFilepath,
+			SizeBytes: outputFileSize,
+			SizeHuman: bytefmt.ByteSize(uint64(outputFileSize)),
+		},
+		OrderFile: FileReport{
+			Path: config.OrderFilename,
+		},
+		ReportFile: FileReport{
+			Path: config.ReportFilename,
+		},
+		Profile: ProfileReport{
+			Directory: config.ProfileDir,
+			CPUPath:   config.CPUProfilePath,
+			MemPath:   config.MemProfilePath,
+		},
+		Bucket:              bucketReport,
+		Reads:               runStats.Reads,
+		UncompressedBytes:   runStats.Bytes,
+		OutputSizeBytes:     outputFileSize,
+		SizeDifferenceBytes: sizeDifference,
+		CompressionRatio:    compressionRatio,
+		SizeReductionRatio:  sizeReductionRatio,
+	}, config.ReportFilename)
 }

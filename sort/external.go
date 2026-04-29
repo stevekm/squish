@@ -27,6 +27,15 @@ type ExternalBucketConfig struct {
 	RecordDelim    byte
 }
 
+type ExternalBucketStats struct {
+	Reads        int    `json:"reads"`
+	Bytes        int    `json:"bytes"`
+	BucketsUsed  int    `json:"buckets_used"`
+	BucketCount  int    `json:"bucket_count"`
+	BucketerName string `json:"bucketer_name"`
+	TempDir      string `json:"temp_dir"`
+}
+
 // bucketWriter owns the temporary FASTQ bucket and a sidecar order file.
 //
 // The order file records each read's original input index because temporary
@@ -52,7 +61,7 @@ const maxOpenBucketWriters = 64
 // Memory usage is bounded by the largest single bucket instead of the full
 // input file. Ordered bucket strategies produce exact global sorts by writing
 // sorted buckets in bucket ID order.
-func RunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, bucketer BucketStrategy) error {
+func RunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, bucketer BucketStrategy) (ExternalBucketStats, error) {
 	if !bucketer.OrderedFor(sorter) {
 		slog.Debug(
 			"bucket strategy is not globally ordered for sorter; output will be deterministic but not a strict global sort",
@@ -64,15 +73,15 @@ func RunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, buc
 	// Start from a clean temp directory so append-mode bucket files cannot pick
 	// up stale records from a previous failed or interrupted run.
 	if err := os.RemoveAll(config.TempDir); err != nil {
-		return fmt.Errorf("clean temp dir: %w", err)
+		return ExternalBucketStats{}, fmt.Errorf("clean temp dir: %w", err)
 	}
 	if err := os.MkdirAll(config.TempDir, 0755); err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
+		return ExternalBucketStats{}, fmt.Errorf("create temp dir: %w", err)
 	}
 
 	bucketPaths, bucketOrderPaths, bucketSizes, totalReads, totalBytes, err := writeBuckets(config, bucketer)
 	if err != nil {
-		return err
+		return ExternalBucketStats{}, err
 	}
 	slog.Info(
 		"external buckets written",
@@ -83,10 +92,17 @@ func RunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, buc
 	)
 
 	if err := sortBucketsToOutput(config, sorter, bucketer, bucketPaths, bucketOrderPaths, bucketSizes); err != nil {
-		return err
+		return ExternalBucketStats{}, err
 	}
 
-	return nil
+	return ExternalBucketStats{
+		Reads:        totalReads,
+		Bytes:        totalBytes,
+		BucketsUsed:  len(bucketPaths),
+		BucketCount:  bucketer.BucketCount(),
+		BucketerName: bucketer.Name(),
+		TempDir:      config.TempDir,
+	}, nil
 }
 
 // writeBuckets is the streaming phase. It reads one FASTQ record at a time,
@@ -322,7 +338,7 @@ func restoreOriginalOrder(reads []fastq.FastqRead, orderPath string) error {
 // MustRunExternalBucketSort is a CLI-oriented wrapper around
 // RunExternalBucketSort that exits on error.
 func MustRunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, bucketer BucketStrategy) {
-	if err := RunExternalBucketSort(config, sorter, bucketer); err != nil {
+	if _, err := RunExternalBucketSort(config, sorter, bucketer); err != nil {
 		log.Fatalf("ERROR: external bucket sort failed: %v\n", err)
 	}
 }
