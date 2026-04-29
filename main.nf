@@ -1,6 +1,7 @@
 #!/usr/bin/env nextflow
 
 nextflow.enable.dsl = 2
+import groovy.json.JsonSlurper
 
 /*
  * Nextflow version of the Makefile test-run-all recipes.
@@ -32,6 +33,7 @@ process RUN_SQUISH_METHOD {
 
     output:
     path "${method}", emit: method_results
+    path "${method}/report*json", emit : report_json
 
     /*
      * Each method gets its own result directory. This avoids filename
@@ -84,4 +86,24 @@ workflow {
         Channel.value(params.fastqout),
         Channel.value(params.make_pdf as boolean)
     )
+
+    RUN_SQUISH_METHOD.out.report_json.map{ jsonFile ->
+        def jsonSlurper = new JsonSlurper()
+        def Map json = (Map) new JsonSlurper().parseText(jsonFile.text)
+        def sort_method = json["sort_method"]
+        def sort_engine = json["sort_engine"]
+        def uncompressed_bytes = json["uncompressed_bytes"]
+        def output_size_bytes = json["output_size_bytes"]
+        def size_difference_bytes = json["size_difference_bytes"]
+        def size_reduction_ratio = json["size_reduction_ratio"]
+
+        return [
+            sort_method,
+            sort_engine,
+            uncompressed_bytes,
+            output_size_bytes,
+            size_difference_bytes,
+            size_reduction_ratio
+            ].join(",")
+    }.collectFile(name: 'report.csv', storeDir: "${params.outdir}", newLine: true)
 }
