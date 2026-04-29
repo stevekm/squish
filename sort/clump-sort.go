@@ -4,7 +4,6 @@ import (
 	"bytes"
 	go_sort "sort"
 	fastq "squish/fastq"
-
 )
 
 func SortReadsClump(reads *[]fastq.FastqRead) {
@@ -42,12 +41,12 @@ func SortReadsClump(reads *[]fastq.FastqRead) {
 }
 
 func clumpBucketKey(read *fastq.FastqRead, prefixLen int) string {
-	seq := read.Sequence
+	seq := read.Sequence()
 	if len(seq) > prefixLen {
 		seq = seq[:prefixLen]
 	}
 
-	qual := read.QualityScores
+	qual := read.QualityScores()
 	if len(qual) > prefixLen {
 		qual = qual[:prefixLen]
 	}
@@ -58,15 +57,15 @@ func clumpBucketKey(read *fastq.FastqRead, prefixLen int) string {
 
 func clumpCompare(a, b fastq.FastqRead) bool {
 	// Prefer reads with identical full sequence content.
-	if c := bytes.Compare(a.Sequence, b.Sequence); c != 0 {
+	if c := bytes.Compare(a.Sequence(), b.Sequence()); c != 0 {
 		return c < 0
 	}
 	// Tie break on quality string similarity.
-	if c := bytes.Compare(a.QualityScores, b.QualityScores); c != 0 {
+	if c := bytes.Compare(a.QualityScores(), b.QualityScores()); c != 0 {
 		return c < 0
 	}
 	// Keep headers stable so repeated Id prefixes stay together.
-	if c := bytes.Compare(a.Id, b.Id); c != 0 {
+	if c := bytes.Compare(a.Id(), b.Id()); c != 0 {
 		return c < 0
 	}
 	// Finally preserve original file order for identical reads.

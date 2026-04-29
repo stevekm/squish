@@ -11,8 +11,9 @@ func SortReadsSequence(reads *[]fastq.FastqRead) {
 	// put the read sorting logic in here!
 	//
 	// sort in-place based on the string of the sequence
-	go_sort.Slice((*reads), func(i, j int) bool { return bytes.Compare((*reads)[i].Sequence, (*reads)[j].Sequence) < 0
- })
+	go_sort.Slice((*reads), func(i, j int) bool {
+		return bytes.Compare((*reads)[i].Sequence(), (*reads)[j].Sequence()) < 0
+	})
 }
 
 func SortReadsGC(reads *[]fastq.FastqRead) {
@@ -20,8 +21,7 @@ func SortReadsGC(reads *[]fastq.FastqRead) {
 }
 
 func SortReadsQual(reads *[]fastq.FastqRead) {
-	go_sort.Slice((*reads), func(i, j int) bool { return bytes.Compare((*reads)[i].QualityScores, (*reads)[j].QualityScores) < 0
-
+	go_sort.Slice((*reads), func(i, j int) bool {
+		return bytes.Compare((*reads)[i].QualityScores(), (*reads)[j].QualityScores()) < 0
 	})
 }
-

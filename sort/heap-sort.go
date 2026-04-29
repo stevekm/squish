@@ -1,31 +1,20 @@
 package sort
 
 import (
+	"bytes"
 	"container/heap"
 	fastq "squish/fastq"
 )
 
 // FastqReadHeap is a wrapper for FastqRead slice to implement heap.Interface
 type FastqReadHeap struct {
-	reads         []fastq.FastqRead
-	comparisonKey func(fr fastq.FastqRead) interface{}
+	reads          []fastq.FastqRead
+	comparisonLess func(a fastq.FastqRead, b fastq.FastqRead) bool
 }
 
 func (h FastqReadHeap) Len() int { return len(h.reads) }
 func (h FastqReadHeap) Less(i, j int) bool {
-	// return h.comparisonKey(h.reads[i]) < h.comparisonKey(h.reads[j])
-	keyI := h.comparisonKey(h.reads[i])
-	keyJ := h.comparisonKey(h.reads[j])
-
-	switch keyI := keyI.(type) {
-	case float64:
-		return keyI < keyJ.(float64)
-	case string:
-		return keyI < keyJ.(string)
-	default:
-		// Handle other types if necessary
-		return false
-	}
+	return h.comparisonLess(h.reads[i], h.reads[j])
 }
 func (h FastqReadHeap) Swap(i, j int) { h.reads[i], h.reads[j] = h.reads[j], h.reads[i] }
 
@@ -44,22 +33,23 @@ func (h *FastqReadHeap) Pop() interface{} {
 }
 
 // HeapSort sorts the FastqRead slice in-place using heap sort.
-func HeapSort(reads []fastq.FastqRead, comparisonKey func(fr fastq.FastqRead) interface{}) {
-	h := &FastqReadHeap{reads: reads, comparisonKey: comparisonKey}
+func HeapSort(reads []fastq.FastqRead, comparisonLess func(a fastq.FastqRead, b fastq.FastqRead) bool) {
+	heapReads := append([]fastq.FastqRead(nil), reads...)
+	h := &FastqReadHeap{reads: heapReads, comparisonLess: comparisonLess}
 	heap.Init(h)
-	for h.Len() > 0 {
-		heap.Pop(h)
+	for i := 0; h.Len() > 0; i++ {
+		reads[i] = heap.Pop(h).(fastq.FastqRead)
 	}
 }
 
 func HeapSortSequence(reads *[]fastq.FastqRead) {
-	HeapSort(*reads, func(fr fastq.FastqRead) interface{} {
-		return string(fr.Sequence)
+	HeapSort(*reads, func(a fastq.FastqRead, b fastq.FastqRead) bool {
+		return bytes.Compare(a.Sequence(), b.Sequence()) < 0
 	})
 }
 
 func HeapSortGC(reads *[]fastq.FastqRead) {
-	HeapSort(*reads, func(fr fastq.FastqRead) interface{} {
-		return fr.GCContent
+	HeapSort(*reads, func(a fastq.FastqRead, b fastq.FastqRead) bool {
+		return a.GCContent < b.GCContent
 	})
 }

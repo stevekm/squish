@@ -13,3 +13,4 @@ output
 order.*
 .DS_Store
 .gocache
+*.fastq.gz
