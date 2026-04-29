@@ -49,6 +49,7 @@ FASTQIN:=data/SRR6357076_1.fastq.gz
 FASTQOUT:=squish.SRR6357076_1
 # FASTQIN:=data/SRX1603629_T1_1.fastq.gz
 # FASTQOUT:=squish.SRX1603629_T1_1
+SAMPLESHEET:=samples.csv
 OUTDIR:=output
 ENGINE:=memory
 BUCKET:=auto
@@ -68,10 +69,10 @@ test-run-all-external:
 	$(MAKE) test-run-all ENGINE=external
 
 nextflow-test-run-all:
-	nextflow run main.nf -profile memory --fastqin "$(FASTQIN)" --fastqout "$(FASTQOUT)"
+	nextflow run main.nf --engine memory --samplesheet "$(SAMPLESHEET)"
 
 nextflow-test-run-all-external:
-	nextflow run main.nf -profile external --fastqin "$(FASTQIN)" --fastqout "$(FASTQOUT)"
+	nextflow run main.nf --engine external --samplesheet "$(SAMPLESHEET)"
 
 # docker build -t stevekm/squish:latest .
 DOCKER_TAG:=stevekm/squish:$(GIT_TAG)
