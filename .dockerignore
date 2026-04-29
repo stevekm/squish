@@ -1,0 +1,18 @@
+# Large/local test data should not be sent to Docker during builds.
+data/
+
+# Nextflow runtime state and generated workflow outputs.
+work/
+.nextflow*
+output-nextflow*/
+
+# Local build/test artifacts.
+.git/
+.gocache/
+build/
+output/
+squish
+*.prof
+*.pprof
+*.pdf
+*.fastq.gz

@@ -1,15 +1,16 @@
 ##
 ## Build
 ##
-# NOTE: make sure to specify the platform in case we build on M1 macOS
-# NOTE: make sure the base image lists amd64 on Docker Hub page! https://hub.docker.com/_/golang/tags
-FROM --platform=linux/amd64 golang:1.21-alpine AS build
+# NOTE: the platform is pinned to linux/amd64 because builds often happen on
+# Apple Silicon, but the resulting image needs to run in x86 Linux batch/HPC
+# environments.
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=$TARGETPLATFORM golang:1.24-alpine AS build
 
-RUN apk update && apk add gcc musl-dev
+RUN apk add --no-cache gcc musl-dev
 
 WORKDIR /app
-COPY go.mod ./
-COPY go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 # overwrite this at build time
@@ -17,29 +18,37 @@ RUN go mod download
 # https://stackoverflow.com/questions/60450479/using-arg-and-env-in-dockerfile
 ARG Version=foo-docker-version
 
+# Copy the full Go program, including local packages imported by main.go.
 COPY main.go ./
-# RUN go test -v ./...
-RUN go build -ldflags="-X 'main.Version=$Version'" -o /squish main.go
+COPY fastq ./fastq
+COPY io ./io
+COPY sort ./sort
+
+RUN go test ./...
+RUN go build -trimpath -ldflags="-X 'main.Version=$Version'" -o /squish ./main.go
 
 ##
 ## Deploy
 ##
 
-# need alpine for using bash, otherwise use scratch
-# https://hub.docker.com/_/alpine/tags
-# FROM --platform=linux/amd64 alpine:3.18.4
-# RUN apk add bash
+# NOTE: had issues with alpine on AWS Batch, so use Ubuntu for runtime.
+FROM --platform=$TARGETPLATFORM ubuntu:22.04
 
-# NOTE: had issues with alpine on AWS Batch so use Debian or Ubuntu instead
-FROM --platform=linux/amd64 ubuntu:22.04
-RUN apt update -y && apt upgrade -y && apt install -y pigz
-
-# Also consider Debian Slim
-# https://www.nextflow.io/docs/latest/tracing.html#trace-required-packages
-# FROM --platform=linux/amd64 debian:bookworm-slim
-# RUN apt update -y && apt upgrade -y && apt install -y procps
+# Runtime packages:
+# - pigz: parallel gzip tooling for downstream shell workflows.
+# - graphviz: provides dot, required by `go tool pprof -pdf`.
+# - ca-certificates/procps: small operational utilities useful in batch systems.
+# - golang-go: provides `go tool pprof` for PDF profile generation. Nextflow is
+#   intentionally not installed here because Nextflow runs the container.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        graphviz \
+        golang-go \
+        pigz \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /squish /usr/local/bin/squish
-RUN ln -s /usr/local/bin/squish
 RUN which squish
-# RUN squish -h
+RUN squish -h || true
