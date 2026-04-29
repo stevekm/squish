@@ -39,15 +39,23 @@ build-all:
 	done ; \
 	done
 
+
+#
+# USAGE:
+# make test-run-all FASTQIN=data/test1.fastq.gz
+#
 # input/SRR14575325.gz9.fastq.gz
-FASTQIN:=input/mid.fastq.gz
-FASTQOUT:=output/mid
-test-run-all: $(BIN)
-	set -x
-	for i in alpha gc qual alpha-heap; do
-	echo ">>> RUNNING: $$i"
-	./$(BIN) -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz
-	$(MAKE) pdf PROF="mem.$$i.prof" PDF="memprofile.$$i.pdf"
+FASTQIN:=data/SRR6357076_1.fastq.gz
+OUTDIR:=output
+FASTQOUT:=squish.SRR6357076_1
+$(OUTDIR):
+	mkdir -p "$(OUTDIR)"
+test-run-all: build $(BIN) $(OUTDIR)
+	set -x ; \
+	for i in alpha gc qual alpha-heap clump; do \
+	echo ">>> RUNNING: $$i" ; \
+	./$(BIN) -outdir "$(OUTDIR)" -m "$$i" -orderFile "order.$$i.txt" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz ; \
+	$(MAKE) pdf PROF="$(OUTDIR)/profile.$$i/mem.$$i.prof" PDF="$(OUTDIR)/profile.$$i/memprofile.$$i.pdf" ; \
 	done
 
 # docker build -t stevekm/squish:latest .

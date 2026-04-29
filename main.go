@@ -5,11 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	fastq "squish/fastq"
 	_io "squish/io"
 	_sort "squish/sort"
+	"strings"
 	"time"
 )
 
@@ -26,6 +29,19 @@ const defaultSortDescrption string = "Alphabetical sort on sequence"
 const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
 const defaultOrderFilename string = "order.txt"
+const defaultProfileDirnameBase string = "profile"
+const defaultOutputDirNameBase string = "output"
+
+func DefaultLogLevel() slog.Level {
+	return slog.LevelDebug
+}
+
+func ConfigureLogging() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: DefaultLogLevel(),
+	}))
+	slog.SetDefault(logger)
+}
 
 func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	// start CPU and Memory profiling
@@ -50,7 +66,7 @@ func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("CPU profile will be saved to %v\n", cpuFilename)
+	slog.Debug("CPU profile will be saved", "path", cpuFilename)
 	pprof.StartCPUProfile(cpuFile)
 
 	// Start memory profiling file
@@ -58,7 +74,7 @@ func Profiling(cpuFilename string, memFilename string) (*os.File, *os.File) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Memory profile will be saved to %v\n", memFilename)
+	slog.Debug("Memory profile will be saved", "path", memFilename)
 
 	return cpuFile, memFile
 }
@@ -74,10 +90,10 @@ func GetFileSize(filepath string) (int64, error) {
 func LogFileSize(filepath string, filetype string) int64 {
 	inputFileSize, err := GetFileSize(filepath)
 	if err != nil {
-		log.Printf("WARNING: could not get size for file %v\n", filepath)
+		slog.Debug("could not get size for file", "path", filepath, "error", err)
 	}
 	inputFileSizeBytes := bytefmt.ByteSize(uint64(inputFileSize))
-	log.Printf("%v file %v of size %v Bytes\n", filetype, filepath, inputFileSizeBytes)
+	slog.Debug("file size", "type", filetype, "path", filepath, "size", inputFileSizeBytes)
 	return inputFileSize
 }
 
@@ -90,6 +106,15 @@ func MinCliPosArgs(args []string, n int) {
 	if len(args) < n {
 		log.Fatalf("Not enough cli args provided, %v args required, or use -h for help\n", n)
 	}
+}
+
+func OutputPath(outputDir string, itemPath string) string {
+	outputPath := filepath.Join(outputDir, itemPath)
+	relPath, err := filepath.Rel(outputDir, outputPath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) {
+		log.Fatalf("ERROR: output item path %v must stay within output directory %v\n", itemPath, outputDir)
+	}
+	return outputPath
 }
 
 func RunSort(config Config) {
@@ -108,15 +133,15 @@ func RunSort(config Config) {
 
 	// load all reads from file
 	totalByteSize := fastq.LoadReads(&reads, reader, &config.RecordDelim)
-	log.Printf("%v reads loaded (%v)\n", len(reads), bytefmt.ByteSize(uint64(totalByteSize)))
+	slog.Info("reads loaded", "count", len(reads), "size", bytefmt.ByteSize(uint64(totalByteSize)))
 
 	// sort the fastq reads
-	log.Printf("starting read sort")
+	slog.Debug("starting read sort")
 	config.SortMethod.Func(&reads)
-	log.Printf("%v reads after sorting\n", len(reads))
+	slog.Debug("reads after sorting", "count", len(reads))
 
 	// write the fastq reads
-	log.Printf("Writing to output file %v\n", config.OutputFilepath)
+	slog.Debug("writing to output file", "path", config.OutputFilepath)
 	fastq.WriteReads(&reads, writer)
 
 	// save the order of the sorted reads to file
@@ -160,6 +185,8 @@ type Config struct {
 }
 
 func main() {
+	ConfigureLogging()
+
 	timeStart := time.Now()
 	sortMethodMap, sortMethodOptionStr := GetSortingMethods()
 
@@ -169,6 +196,7 @@ func main() {
 	cpuProfileFilename := flag.String("cpuProf", defaultCpuProfileFilename, "CPU profile filename")
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
 	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
+	outputDirArg := flag.String("outdir", defaultOutputDirNameBase, "Output dir")
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
 	if *printVersion {
@@ -178,7 +206,9 @@ func main() {
 
 	// get positional cli args
 	inputFilepath := cliArgs[0]
-	outputFilepath := cliArgs[1]
+	outputDir := filepath.Clean(*outputDirArg)
+	outputFilepath := OutputPath(outputDir, cliArgs[1])
+	orderFilepath := OutputPath(outputDir, *orderFilename)
 
 	inputFileSize := LogFileSize(inputFilepath, "Input")
 
@@ -195,21 +225,45 @@ func main() {
 		RecordDelim:      delim,
 		RecordHeaderChar: fastqHeaderChar,
 		TimeStart:        timeStart,
-		OrderFilename:    *orderFilename,
+		OrderFilename:    orderFilepath,
 	}
+
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Fatalf("ERROR: could not create output directory %v: %v\n", outputDir, err)
+	}
+	slog.Debug("output directory", "path", outputDir)
+
+	outputFileDir := filepath.Dir(config.OutputFilepath)
+	if err := os.MkdirAll(outputFileDir, 0755); err != nil {
+		log.Fatalf("ERROR: could not create output file directory %v: %v\n", outputFileDir, err)
+	}
+
+	orderFileDir := filepath.Dir(config.OrderFilename)
+	if err := os.MkdirAll(orderFileDir, 0755); err != nil {
+		log.Fatalf("ERROR: could not create order file directory %v: %v\n", orderFileDir, err)
+	}
+
+	profileDirNameBase := OutputPath(outputDir, defaultProfileDirnameBase+"."+config.SortMethod.CLIArg)
+	if err := os.MkdirAll(profileDirNameBase, 0755); err != nil {
+		log.Fatalf("ERROR: could not create profile directory %v: %v\n", profileDirNameBase, err)
+	}
+	slog.Debug("saving profile", "path", profileDirNameBase)
+
+	cpuProfilePath := OutputPath(profileDirNameBase, *cpuProfileFilename)
+	memProfilePath := OutputPath(profileDirNameBase, *memProfileFilename)
 
 	//
 	//
 	//
 	// start profiler
-	cpuFile, memFile := Profiling(*cpuProfileFilename, *memProfileFilename)
+	cpuFile, memFile := Profiling(cpuProfilePath, memProfilePath)
 	defer cpuFile.Close()
 	defer memFile.Close()
 	defer pprof.StopCPUProfile()
 	defer pprof.WriteHeapProfile(memFile)
 
 	// insert sort methods here
-	log.Printf("Using sort method: %v\n", config.SortMethod.CLIArg)
+	slog.Debug("using sort method", "method", config.SortMethod.CLIArg)
 	RunSort(config)
 
 	//
@@ -223,9 +277,10 @@ func main() {
 	sizeDifference := config.InputFileSize - outputFileSize
 	sizeDifferenceBytes := bytefmt.ByteSize(uint64(sizeDifference))
 
-	log.Printf("Size reduced by %v Bytes (%.4f) in %v\n",
-		sizeDifferenceBytes,
-		float64(sizeDifference)/float64(inputFileSize),
-		timeDuration,
+	slog.Debug(
+		"size reduced",
+		"bytes", sizeDifferenceBytes,
+		"ratio", float64(sizeDifference)/float64(inputFileSize),
+		"duration", timeDuration,
 	)
 }
