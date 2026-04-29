@@ -6,16 +6,41 @@ import (
 	fastq "squish/fastq"
 )
 
-func SortReadsClump(reads *[]fastq.FastqRead) {
-	go_sort.Slice(*reads, func(i, j int) bool {
-		return ClumpCompare((*reads)[i], (*reads)[j])
-	})
+type clumpRead struct {
+	read fastq.FastqRead
+	key  []byte
 }
 
-const clumpKmerLen = 16
+func SortReadsClump(reads *[]fastq.FastqRead) {
+	SortReadsClumpK(reads, DefaultClumpKmerLen)
+}
+
+func SortReadsClumpK(reads *[]fastq.FastqRead, k int) {
+	clumpReads := make([]clumpRead, len(*reads))
+	for i, read := range *reads {
+		clumpReads[i] = clumpRead{
+			read: read,
+			key:  ClumpKeyK(read, k),
+		}
+	}
+
+	go_sort.Slice(clumpReads, func(i, j int) bool {
+		return ClumpReadLess(clumpReads[i], clumpReads[j])
+	})
+
+	for i, clumpRead := range clumpReads {
+		(*reads)[i] = clumpRead.read
+	}
+}
+
+const DefaultClumpKmerLen = 16
 
 func ClumpKey(read fastq.FastqRead) []byte {
-	return clumpMinimizer(read.Sequence(), clumpKmerLen)
+	return ClumpKeyK(read, DefaultClumpKmerLen)
+}
+
+func ClumpKeyK(read fastq.FastqRead, k int) []byte {
+	return clumpMinimizer(read.Sequence(), k)
 }
 
 func clumpMinimizer(sequence []byte, k int) []byte {
@@ -76,22 +101,33 @@ func trimLineEnding(line []byte) []byte {
 }
 
 func ClumpCompare(a, b fastq.FastqRead) bool {
+	return ClumpCompareK(a, b, DefaultClumpKmerLen)
+}
+
+func ClumpCompareK(a, b fastq.FastqRead, k int) bool {
+	return ClumpReadLess(
+		clumpRead{read: a, key: ClumpKeyK(a, k)},
+		clumpRead{read: b, key: ClumpKeyK(b, k)},
+	)
+}
+
+func ClumpReadLess(a, b clumpRead) bool {
 	// Group reads by a canonical minimizer k-mer. This is closer to the
 	// Clumpify-style goal of putting reads with shared sequence content near
 	// each other, even when the shared sequence is not at the start of the read.
-	if c := bytes.Compare(ClumpKey(a), ClumpKey(b)); c != 0 {
+	if c := bytes.Compare(a.key, b.key); c != 0 {
 		return c < 0
 	}
 	// Within a clump, keep records deterministic and compression-friendly by
 	// sorting on the full sequence and quality bytes.
-	if c := bytes.Compare(a.Sequence(), b.Sequence()); c != 0 {
+	if c := bytes.Compare(a.read.Sequence(), b.read.Sequence()); c != 0 {
 		return c < 0
 	}
-	if c := bytes.Compare(a.QualityScores(), b.QualityScores()); c != 0 {
+	if c := bytes.Compare(a.read.QualityScores(), b.read.QualityScores()); c != 0 {
 		return c < 0
 	}
-	if c := bytes.Compare(a.Id(), b.Id()); c != 0 {
+	if c := bytes.Compare(a.read.Id(), b.read.Id()); c != 0 {
 		return c < 0
 	}
-	return a.I < b.I
+	return a.read.I < b.read.I
 }

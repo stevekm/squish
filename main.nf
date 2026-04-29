@@ -28,6 +28,7 @@ process RUN_SQUISH_METHOD {
     val engine
     val bucket
     val buckets
+    val clump_k
     val fastqout_base
     val make_pdf
 
@@ -45,13 +46,14 @@ process RUN_SQUISH_METHOD {
     method_outdir="${method}"
     mkdir -p "\${method_outdir}"
 
-    echo ">>> RUNNING: method=${method} engine=${engine} bucket=${bucket} buckets=${buckets}"
+    echo ">>> RUNNING: method=${method} engine=${engine} bucket=${bucket} buckets=${buckets} clumpK=${clump_k}"
 
     squish \\
       -outdir "\${method_outdir}" \\
       -engine "${engine}" \\
       -bucket "${bucket}" \\
       -buckets "${buckets}" \\
+      -clumpK "${clump_k}" \\
       -m "${method}" \\
       -orderFile "order.${method}.txt" \\
       -reportFile "report.${method}.json" \\
@@ -83,6 +85,7 @@ workflow {
         Channel.value(params.engine),
         Channel.value(params.bucket),
         Channel.value(params.buckets as int),
+        Channel.value(params.clump_k as int),
         Channel.value(params.fastqout),
         Channel.value(params.make_pdf as boolean)
     )

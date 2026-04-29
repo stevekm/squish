@@ -73,12 +73,25 @@ func (QualitySort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
 
 // ClumpSort reuses the clump comparator, which is intended to group similar
 // reads for better compression rather than to model a biological ordering.
-type ClumpSort struct{}
+type ClumpSort struct {
+	K int
+}
 
 func (ClumpSort) Name() string { return "clump" }
 
-func (ClumpSort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
-	return ClumpCompare(a, b)
+func (s ClumpSort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
+	return ClumpCompareK(a, b, s.k())
+}
+
+func (s ClumpSort) Sort(reads []fastq.FastqRead) {
+	SortReadsClumpK(&reads, s.k())
+}
+
+func (s ClumpSort) k() int {
+	if s.K < 1 {
+		return DefaultClumpKmerLen
+	}
+	return s.K
 }
 
 type BytePrefixBuckets struct {
@@ -195,8 +208,10 @@ func NewHashBuckets(bucketCount int) HashBuckets {
 	})
 }
 
-func NewClumpBuckets(bucketCount int) HashBuckets {
-	return newHashBuckets("clump-minimizer", bucketCount, ClumpKey)
+func NewClumpBuckets(bucketCount int, k int) HashBuckets {
+	return newHashBuckets("clump-minimizer", bucketCount, func(read fastq.FastqRead) []byte {
+		return ClumpKeyK(read, k)
+	})
 }
 
 func newHashBuckets(name string, bucketCount int, keyFunc func(fastq.FastqRead) []byte) HashBuckets {
@@ -232,7 +247,7 @@ func StrategyForName(name string) (SortStrategy, bool) {
 	case "qual":
 		return QualitySort{}, true
 	case "clump":
-		return ClumpSort{}, true
+		return ClumpSort{K: DefaultClumpKmerLen}, true
 	default:
 		return nil, false
 	}
@@ -250,7 +265,11 @@ func DefaultBucketStrategy(sorter SortStrategy, bucketCount int) BucketStrategy 
 	case "qual":
 		return NewQualityPrefixBuckets(1)
 	case "clump":
-		return NewClumpBuckets(bucketCount)
+		clumpSorter, ok := sorter.(ClumpSort)
+		if !ok {
+			return NewClumpBuckets(bucketCount, DefaultClumpKmerLen)
+		}
+		return NewClumpBuckets(bucketCount, clumpSorter.k())
 	default:
 		return NewHashBuckets(bucketCount)
 	}

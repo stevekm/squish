@@ -53,13 +53,14 @@ OUTDIR:=output
 ENGINE:=memory
 BUCKET:=auto
 BUCKETS:=512
+CLUMPK:=16
 $(OUTDIR):
 	mkdir -p "$(OUTDIR)"
 test-run-all: build $(BIN) $(OUTDIR)
 	set -x ; \
 	for i in alpha gc qual alpha-heap clump; do \
-	echo ">>> RUNNING: method=$$i engine=$(ENGINE) bucket=$(BUCKET) buckets=$(BUCKETS)" ; \
-	./$(BIN) -outdir "$(OUTDIR)" -engine "$(ENGINE)" -bucket "$(BUCKET)" -buckets "$(BUCKETS)" -m "$$i" -orderFile "order.$$i.txt" -reportFile "report.$$i.json" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz ; \
+	echo ">>> RUNNING: method=$$i engine=$(ENGINE) bucket=$(BUCKET) buckets=$(BUCKETS) clumpK=$(CLUMPK)" ; \
+	./$(BIN) -outdir "$(OUTDIR)" -engine "$(ENGINE)" -bucket "$(BUCKET)" -buckets "$(BUCKETS)" -clumpK "$(CLUMPK)" -m "$$i" -orderFile "order.$$i.txt" -reportFile "report.$$i.json" -memProf "mem.$$i.prof" -cpuProf "cpu.$$i.prof" "$(FASTQIN)" "$(FASTQOUT)".$$i.fastq.gz ; \
 	$(MAKE) pdf PROF="$(OUTDIR)/profile.$$i/mem.$$i.prof" PDF="$(OUTDIR)/profile.$$i/memprofile.$$i.pdf" ; \
 	done
 

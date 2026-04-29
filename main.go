@@ -36,6 +36,7 @@ const defaultOutputDirNameBase string = "output"
 const defaultSortEngine string = "memory"
 const defaultBucketStrategy string = "auto"
 const defaultExternalBucketCount int = 512
+const defaultClumpKmerLen int = _sort.DefaultClumpKmerLen
 
 func DefaultLogLevel() slog.Level {
 	return slog.LevelDebug
@@ -113,6 +114,7 @@ type RunStats struct {
 
 type FileReport struct {
 	Path       string `json:"path"`
+	Argument   string `json:"argument,omitempty"`
 	SizeBytes  int64  `json:"size_bytes,omitempty"`
 	SizeHuman  string `json:"size_human,omitempty"`
 	Descriptor string `json:"descriptor,omitempty"`
@@ -141,6 +143,7 @@ type Report struct {
 	SortMethod           string        `json:"sort_method"`
 	SortDescription      string        `json:"sort_description"`
 	SortEngine           string        `json:"sort_engine"`
+	ClumpKmerLength      int           `json:"clump_kmer_length"`
 	Input                FileReport    `json:"input"`
 	Output               FileReport    `json:"output"`
 	OrderFile            FileReport    `json:"order_file"`
@@ -184,6 +187,14 @@ func OutputPath(outputDir string, itemPath string) string {
 		log.Fatalf("ERROR: output item path %v must stay within output directory %v\n", itemPath, outputDir)
 	}
 	return outputPath
+}
+
+func AbsolutePath(path string) string {
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		log.Fatalf("ERROR: could not resolve absolute path for %v: %v\n", path, err)
+	}
+	return absolutePath
 }
 
 func RunSort(config Config) RunStats {
@@ -286,23 +297,25 @@ type SortMethod struct {
 }
 
 type Config struct {
-	SortMethod       SortMethod
-	InputFilepath    string
-	InputFileSize    int64
-	OutputFilepath   string
-	RecordDelim      byte
-	RecordHeaderChar byte
-	TimeStart        time.Time
-	OrderFilename    string
-	ReportFilename   string
-	OutputDir        string
-	SortEngine       string
-	BucketStrategy   string
-	BucketCount      int
-	TempDir          string
-	ProfileDir       string
-	CPUProfilePath   string
-	MemProfilePath   string
+	SortMethod        SortMethod
+	InputFilepath     string
+	InputFileSize     int64
+	OutputFilenameArg string
+	OutputFilepath    string
+	RecordDelim       byte
+	RecordHeaderChar  byte
+	TimeStart         time.Time
+	OrderFilename     string
+	ReportFilename    string
+	OutputDir         string
+	SortEngine        string
+	BucketStrategy    string
+	BucketCount       int
+	ClumpKmerLen      int
+	TempDir           string
+	ProfileDir        string
+	CPUProfilePath    string
+	MemProfilePath    string
 }
 
 func GetBucketStrategy(config Config) _sort.BucketStrategy {
@@ -319,6 +332,8 @@ func GetBucketStrategy(config Config) _sort.BucketStrategy {
 		return _sort.NewGCRangeBuckets(config.BucketCount)
 	case "hash":
 		return _sort.NewHashBuckets(config.BucketCount)
+	case "clump-minimizer":
+		return _sort.NewClumpBuckets(config.BucketCount, config.ClumpKmerLen)
 	default:
 		log.Fatalf("ERROR: Unknown bucket strategy: %v\n", config.BucketStrategy)
 	}
@@ -340,8 +355,9 @@ func main() {
 	reportFilename := flag.String("reportFile", defaultReportFilename, "JSON report filename")
 	outputDirArg := flag.String("outdir", defaultOutputDirNameBase, "Output dir")
 	sortEngine := flag.String("engine", defaultSortEngine, "Sort engine. Options: memory, external")
-	bucketStrategy := flag.String("bucket", defaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash")
+	bucketStrategy := flag.String("bucket", defaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash, clump-minimizer")
 	bucketCount := flag.Int("buckets", defaultExternalBucketCount, "External bucket count for bucket strategies that use a configurable count")
+	clumpKmerLen := flag.Int("clumpK", defaultClumpKmerLen, "K-mer length used by the clump minimizer")
 	tempDirArg := flag.String("tempdir", "tmp", "External bucket temp directory under the output dir")
 	flag.Parse()
 	cliArgs := flag.Args() // all positional args passed
@@ -352,8 +368,9 @@ func main() {
 
 	// get positional cli args
 	inputFilepath := cliArgs[0]
+	outputFilenameArg := cliArgs[1]
 	outputDir := filepath.Clean(*outputDirArg)
-	outputFilepath := OutputPath(outputDir, cliArgs[1])
+	outputFilepath := OutputPath(outputDir, outputFilenameArg)
 	orderFilepath := OutputPath(outputDir, *orderFilename)
 	reportFilepath := OutputPath(outputDir, *reportFilename)
 	tempDir := OutputPath(outputDir, *tempDirArg)
@@ -361,25 +378,36 @@ func main() {
 	inputFileSize := LogFileSize(inputFilepath, "Input")
 
 	// initialize config
-	_, ok := sortMethodMap[*sortMethodArg]
+	sortMethod, ok := sortMethodMap[*sortMethodArg]
 	if !ok {
 		log.Fatalf("ERROR: Unknown sort method: %v\n", *sortMethodArg)
 	}
+	if *clumpKmerLen < 1 {
+		log.Fatalf("ERROR: clumpK must be >= 1, got %v\n", *clumpKmerLen)
+	}
+	if sortMethod.CLIArg == "clump" {
+		sortMethod.Func = func(reads *[]fastq.FastqRead) {
+			_sort.SortReadsClumpK(reads, *clumpKmerLen)
+		}
+		sortMethod.Strategy = _sort.ClumpSort{K: *clumpKmerLen}
+	}
 	config := Config{
-		SortMethod:       sortMethodMap[*sortMethodArg],
-		InputFilepath:    inputFilepath,
-		InputFileSize:    inputFileSize,
-		OutputFilepath:   outputFilepath,
-		RecordDelim:      delim,
-		RecordHeaderChar: fastqHeaderChar,
-		TimeStart:        timeStart,
-		OrderFilename:    orderFilepath,
-		ReportFilename:   reportFilepath,
-		OutputDir:        outputDir,
-		SortEngine:       *sortEngine,
-		BucketStrategy:   *bucketStrategy,
-		BucketCount:      *bucketCount,
-		TempDir:          tempDir,
+		SortMethod:        sortMethod,
+		InputFilepath:     inputFilepath,
+		InputFileSize:     inputFileSize,
+		OutputFilenameArg: outputFilenameArg,
+		OutputFilepath:    outputFilepath,
+		RecordDelim:       delim,
+		RecordHeaderChar:  fastqHeaderChar,
+		TimeStart:         timeStart,
+		OrderFilename:     orderFilepath,
+		ReportFilename:    reportFilepath,
+		OutputDir:         outputDir,
+		SortEngine:        *sortEngine,
+		BucketStrategy:    *bucketStrategy,
+		BucketCount:       *bucketCount,
+		ClumpKmerLen:      *clumpKmerLen,
+		TempDir:           tempDir,
 	}
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -425,7 +453,7 @@ func main() {
 	defer pprof.WriteHeapProfile(memFile)
 
 	// insert sort methods here
-	slog.Debug("using sort method", "method", config.SortMethod.CLIArg)
+	slog.Debug("using sort method", "method", config.SortMethod.CLIArg, "clump_k", config.ClumpKmerLen)
 	var runStats RunStats
 	switch config.SortEngine {
 	case "memory":
@@ -480,13 +508,15 @@ func main() {
 		SortMethod:           config.SortMethod.CLIArg,
 		SortDescription:      config.SortMethod.Description,
 		SortEngine:           config.SortEngine,
+		ClumpKmerLength:      config.ClumpKmerLen,
 		Input: FileReport{
 			Path:      config.InputFilepath,
 			SizeBytes: config.InputFileSize,
 			SizeHuman: bytefmt.ByteSize(uint64(config.InputFileSize)),
 		},
 		Output: FileReport{
-			Path:      config.OutputFilepath,
+			Path:      AbsolutePath(config.OutputFilepath),
+			Argument:  config.OutputFilenameArg,
 			SizeBytes: outputFileSize,
 			SizeHuman: bytefmt.ByteSize(uint64(outputFileSize)),
 		},

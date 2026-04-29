@@ -256,9 +256,13 @@ func sortBucketsToOutput(
 		if err != nil {
 			return err
 		}
-		go_sort.Slice(reads, func(i, j int) bool {
-			return sorter.Less(reads[i], reads[j])
-		})
+		if clumpSorter, ok := sorter.(interface{ Sort([]fastq.FastqRead) }); ok {
+			clumpSorter.Sort(reads)
+		} else {
+			go_sort.Slice(reads, func(i, j int) bool {
+				return sorter.Less(reads[i], reads[j])
+			})
+		}
 
 		// Ordered bucket strategies rely on this append order: bucket 0 first,
 		// then bucket 1, and so on. Each bucket is already internally sorted.
