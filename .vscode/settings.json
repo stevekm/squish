@@ -4,7 +4,35 @@
         "editor.formatOnSave": false,
         "editor.codeActionsOnSave": {
             "source.organizeImports": "never"
-        },
+        }
     },
-    "go.formatTool": "gofmt"
+    "go.formatTool": "gofmt",
+    "search.exclude": {
+        "**/data/**": true,
+        "**/output/**": true,
+        "**/output-nextflow*/**": true,
+        "**/work/**": true,
+        "**/build/**": true,
+        "**/.nextflow*": true,
+        "**/*.gz": true,
+        "**/*.fastq": true,
+        "**/*.fq": true,
+        "**/*.log": true,
+        "**/*.pdf": true,
+        "**/*.prof": true
+    },
+    "files.watcherExclude": {
+        "**/data/**": true,
+        "**/output/**": true,
+        "**/output-nextflow*/**": true,
+        "**/work/**": true,
+        "**/build/**": true,
+        "**/.nextflow*": true,
+        "**/*.gz": true,
+        "**/*.fastq": true,
+        "**/*.fq": true,
+        "**/*.log": true,
+        "**/*.pdf": true,
+        "**/*.prof": true
+    }
 }
