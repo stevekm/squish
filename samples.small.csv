@@ -1,0 +1,5 @@
+sample_id,fastqin,fastqout,paired_fastqs,paired_outputs
+SRR6357076,data/SRR6357076_1.fastq.gz,squish.SRR6357076_1,data/SRR6357076_2.fastq.gz,squish.SRR6357076_2
+SRR6357073_1,data/SRR6357073_1.fastq.gz,squish.SRR6357073_1,,
+SRR6357074_1,data/SRR6357074_1.fastq.gz,squish.SRR6357074_1,,
+SRR6357075_1,data/SRR6357075_1.fastq.gz,squish.SRR6357075_1,,

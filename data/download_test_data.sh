@@ -93,6 +93,22 @@ download_url \
     "https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357076_2.fastq.gz" \
     "SRR6357076_2.fastq.gz"
 
+
+download_url \
+"https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357073_1.fastq.gz" "SRR6357073_1.fastq.gz"
+
+download_url \
+"https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357074_1.fastq.gz" "SRR6357074_1.fastq.gz"
+
+download_url \
+"https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357076_1.fastq.gz" "SRR6357076_1.fastq.gz"
+
+download_url \
+"https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357076_2.fastq.gz" "SRR6357076_2.fastq.gz"
+
+download_url \
+"https://raw.githubusercontent.com/nf-core/test-datasets/rnaseq/testdata/GSE110004/SRR6357075_1.fastq.gz" "SRR6357075_1.fastq.gz"
+
 # Full-size paired RNA-seq test data from the nf-core/rnaseq full test config.
 # https://github.com/nf-core/rnaseq/blob/master/conf/test_full.config
 # https://raw.githubusercontent.com/nf-core/test-datasets/626c8fab639062eade4b10747e919341cbf9b41a/samplesheet/v3.10/samplesheet_full.csv

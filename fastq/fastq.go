@@ -5,12 +5,15 @@ package fastq
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	_io "squish/io"
 	"strconv"
+	"strings"
 )
 
 // FastqRead is a lightweight view into a FastqArena.
@@ -40,6 +43,16 @@ type FastqRead struct {
 // bucket mode each streamed record or loaded bucket gets a smaller arena.
 type FastqArena struct {
 	Data []byte
+}
+
+type ReorderStats struct {
+	Reads int
+	Bytes int
+}
+
+type recordIndexEntry struct {
+	Offset int64
+	Size   int
 }
 
 // Append adds a line or record fragment to the arena and returns the range
@@ -232,4 +245,196 @@ func SaveOrder(readsBuffer *[]FastqRead, orderFilename string) {
 			log.Fatalf("Error writing to file: %v\n", err)
 		}
 	}
+}
+
+func LoadOrder(orderFilename string) ([]int, error) {
+	orderFile, err := os.Open(orderFilename)
+	if err != nil {
+		return nil, fmt.Errorf("open order file: %w", err)
+	}
+	defer orderFile.Close()
+
+	order := []int{}
+	scanner := bufio.NewScanner(orderFile)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		readIndex, err := strconv.Atoi(line)
+		if err != nil {
+			return nil, fmt.Errorf("parse order value %q: %w", line, err)
+		}
+		order = append(order, readIndex)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan order file: %w", err)
+	}
+	return order, nil
+}
+
+// NormalizedReadID trims common mate-specific suffixes so R1/R2 headers can be
+// compared. It keeps only the first whitespace-delimited field and strips a
+// trailing /1 or /2, which covers the common FASTQ header forms.
+func NormalizedReadID(id []byte) string {
+	value := strings.TrimSpace(string(id))
+	value = strings.TrimPrefix(value, "@")
+	if fields := strings.Fields(value); len(fields) > 0 {
+		value = fields[0]
+	}
+	if strings.HasSuffix(value, "/1") || strings.HasSuffix(value, "/2") {
+		value = value[:len(value)-2]
+	}
+	return value
+}
+
+func LoadNormalizedReadNames(inputFilepath string, delim byte) ([]string, error) {
+	reader := _io.GetReader(inputFilepath)
+	defer reader.Close()
+
+	names := []string{}
+	readIndex := 0
+	for {
+		read, _, err := ReadNextRead(reader, &delim, &readIndex)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("read names from fastq: %w", err)
+		}
+		names = append(names, NormalizedReadID(read.Id()))
+	}
+	return names, nil
+}
+
+// ReorderReadsByOrder applies a sorted R1 order file to a companion FASTQ.
+//
+// The order file uses one-based original read indexes. For each index in that
+// file, the corresponding companion record is emitted to outputFilepath. This
+// preserves pairing when R1 defines the sort order.
+func ReorderReadsByOrder(
+	inputFilepath string,
+	outputFilepath string,
+	orderFilename string,
+	delim byte,
+	expectedReads int,
+	referenceNames []string,
+) (ReorderStats, error) {
+	reader := _io.GetReader(inputFilepath)
+	defer reader.Close()
+
+	tempDir, err := os.MkdirTemp(filepath.Dir(outputFilepath), ".reorder-*")
+	if err != nil {
+		return ReorderStats{}, fmt.Errorf("create reorder temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tempRecordsPath := filepath.Join(tempDir, "records.fastq")
+	tempRecords, err := os.Create(tempRecordsPath)
+	if err != nil {
+		return ReorderStats{}, fmt.Errorf("create reorder temp records: %w", err)
+	}
+
+	index := []recordIndexEntry{}
+	if expectedReads > 0 {
+		index = make([]recordIndexEntry, 0, expectedReads)
+	}
+	totalBytes := 0
+	readIndex := 0
+	for {
+		read, readSize, err := ReadNextRead(reader, &delim, &readIndex)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			tempRecords.Close()
+			return ReorderStats{}, fmt.Errorf("read companion fastq: %w", err)
+		}
+		if len(referenceNames) > 0 {
+			if len(index) >= len(referenceNames) {
+				tempRecords.Close()
+				return ReorderStats{}, fmt.Errorf("reference read count mismatch for %s: companion has more than %d reads", inputFilepath, len(referenceNames))
+			}
+			if got, want := NormalizedReadID(read.Id()), referenceNames[len(index)]; got != want {
+				tempRecords.Close()
+				return ReorderStats{}, fmt.Errorf("read name mismatch for %s at original read %d: got %q, want %q", inputFilepath, len(index)+1, got, want)
+			}
+		}
+
+		offset, err := tempRecords.Seek(0, io.SeekCurrent)
+		if err != nil {
+			tempRecords.Close()
+			return ReorderStats{}, fmt.Errorf("get temp record offset: %w", err)
+		}
+		n, err := tempRecords.Write(read.Record())
+		if err != nil {
+			tempRecords.Close()
+			return ReorderStats{}, fmt.Errorf("write temp companion record: %w", err)
+		}
+		index = append(index, recordIndexEntry{Offset: offset, Size: n})
+		totalBytes += readSize
+	}
+	if err := tempRecords.Close(); err != nil {
+		return ReorderStats{}, fmt.Errorf("close temp companion records: %w", err)
+	}
+
+	if expectedReads > 0 && len(index) != expectedReads {
+		return ReorderStats{}, fmt.Errorf("read count mismatch for %s: got %d, want %d", inputFilepath, len(index), expectedReads)
+	}
+	if len(referenceNames) > 0 && len(referenceNames) != len(index) {
+		return ReorderStats{}, fmt.Errorf("reference read count mismatch for %s: got %d reference names for %d reads", inputFilepath, len(referenceNames), len(index))
+	}
+
+	orderFile, err := os.Open(orderFilename)
+	if err != nil {
+		return ReorderStats{}, fmt.Errorf("open order file: %w", err)
+	}
+	defer orderFile.Close()
+
+	tempRecordsReader, err := os.Open(tempRecordsPath)
+	if err != nil {
+		return ReorderStats{}, fmt.Errorf("open temp companion records: %w", err)
+	}
+	defer tempRecordsReader.Close()
+
+	seen := make([]bool, len(index))
+	writer := _io.GetWriter(outputFilepath)
+	defer writer.Close()
+
+	scanner := bufio.NewScanner(orderFile)
+	outputIndex := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		originalIndex, err := strconv.Atoi(line)
+		if err != nil {
+			return ReorderStats{}, fmt.Errorf("parse order value %q: %w", line, err)
+		}
+		outputIndex++
+		if originalIndex < 1 || originalIndex > len(index) {
+			return ReorderStats{}, fmt.Errorf("order row %d references read %d outside range [1, %d]", outputIndex, originalIndex, len(index))
+		}
+		if seen[originalIndex-1] {
+			return ReorderStats{}, fmt.Errorf("order row %d repeats read %d", outputIndex, originalIndex)
+		}
+		seen[originalIndex-1] = true
+		recordIndex := index[originalIndex-1]
+		record := make([]byte, recordIndex.Size)
+		if _, err := tempRecordsReader.ReadAt(record, recordIndex.Offset); err != nil {
+			return ReorderStats{}, fmt.Errorf("read temp companion record %d: %w", originalIndex, err)
+		}
+		if _, err := writer.Writer.Write(record); err != nil {
+			return ReorderStats{}, fmt.Errorf("write reordered read %d: %w", originalIndex, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return ReorderStats{}, fmt.Errorf("scan order file: %w", err)
+	}
+	if outputIndex != len(index) {
+		return ReorderStats{}, fmt.Errorf("order length mismatch for %s: got %d order rows for %d reads", inputFilepath, outputIndex, len(index))
+	}
+
+	return ReorderStats{Reads: len(index), Bytes: totalBytes}, nil
 }

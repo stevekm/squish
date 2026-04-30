@@ -3,6 +3,14 @@
 nextflow.enable.dsl = 2
 import groovy.json.JsonSlurper
 
+def splitList(value) {
+    return (value ?: '')
+        .toString()
+        .split(/[;,]/)
+        .collect { it.trim() }
+        .findAll { it }
+}
+
 /*
  * Nextflow version of the Makefile test-run-all recipes.
  *
@@ -15,7 +23,10 @@ import groovy.json.JsonSlurper
  *
  * Input FASTQ files are read from a CSV samplesheet with these columns:
  *
- *   sample_id,fastqin,fastqout
+ *   sample_id,fastqin,fastqout,paired_fastqs,paired_outputs
+ *
+ * paired_fastqs and paired_outputs are optional semicolon-separated lists.
+ * paired_outputs are filename bases; the workflow appends .<method>.fastq.gz.
  *
  * The squish binary is expected to be available on PATH. For local runs, place
  * it in a local bin directory that Nextflow prepends to PATH.
@@ -27,7 +38,7 @@ process RUN_SQUISH_METHOD {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(fastq_in), val(fastqout_base), val(method)
+    tuple val(sample_id), path(fastq_in), val(fastqout_base), path(paired_fastqs), val(paired_outputs), val(method)
     val engine
     val bucket
     val buckets
@@ -44,6 +55,10 @@ process RUN_SQUISH_METHOD {
      * output FASTQ together.
      */
     script:
+    def paired_files = paired_fastqs instanceof List ? paired_fastqs : (paired_fastqs ? [paired_fastqs] : [])
+    def paired_arg = paired_files ? "-paired \"${paired_files.join(',')}\"" : ""
+    def paired_output_items = splitList(paired_outputs).collect { "${it}.${method}.fastq.gz" }
+    def paired_out_arg = paired_output_items ? "-pairedOut \"${paired_output_items.join(',')}\"" : ""
     """
     method_outdir="${sample_id}/${method}"
     mkdir -p "\${method_outdir}"
@@ -61,6 +76,8 @@ process RUN_SQUISH_METHOD {
       -reportFile "report.${method}.json" \\
       -memProf "mem.${method}.prof" \\
       -cpuProf "cpu.${method}.prof" \\
+      ${paired_arg} \\
+      ${paired_out_arg} \\
       "${fastq_in}" \\
       "${fastqout_base}.${method}.fastq.gz"
 
@@ -80,7 +97,8 @@ workflow {
         .fromPath(params.samplesheet)
         .splitCsv(header: true)
         .map { row ->
-            tuple(row.sample_id, file(row.fastqin), row.fastqout)
+            def paired_fastqs = splitList(row.paired_fastqs).collect { file(it) }
+            tuple(row.sample_id, file(row.fastqin), row.fastqout, paired_fastqs, row.paired_outputs ?: '')
         }
 
     methods_ch = Channel
@@ -91,8 +109,7 @@ workflow {
      * methods, so every sample is run through every configured sorter.
      */
     sample_methods_ch = samples_ch
-        .combine(methods_ch).view()
-
+        .combine(methods_ch)
 
     RUN_SQUISH_METHOD(
         sample_methods_ch,
@@ -119,6 +136,7 @@ workflow {
         def size_reduction_ratio = json["size_reduction_ratio"]
         def output_arg = json["output"]["argument"]
         def input_arg = json["input"]["path"]
+        def paired_output_args = (json["paired_outputs"] ?: []).collect { it["output"]["argument"] }.join(";")
 
         header = [
             "sample_id",
@@ -129,7 +147,8 @@ workflow {
             "size_difference_bytes",
             "size_reduction_ratio",
             "output_arg",
-            "input_arg"
+            "input_arg",
+            "paired_output_args"
             ].join(",")
         line = [
             sample_id,
@@ -140,7 +159,8 @@ workflow {
             size_difference_bytes,
             size_reduction_ratio,
             output_arg,
-            input_arg
+            input_arg,
+            paired_output_args
             ].join(",")
         output = [header, line].join("\n")
 
