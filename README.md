@@ -9,13 +9,14 @@ often larger than available RAM.
 
 ## Features
 
-- Sort FASTQ records by sequence, GC content, quality string, heap-based
-  sequence order, or clump-style minimizer grouping.
-- External bucket sorting for large inputs.
+- Clump-style k-mer minimizer sorting for maximum gzip compression (default).
+- Additional sort methods: bytewise sequence, GC content, quality string.
+- External bucket sorting for large inputs that do not fit in RAM.
 - Arena-backed FASTQ parsing to reduce per-read allocation overhead.
 - Optional paired/companion FASTQ reordering: sort R1 once, then apply the same
   `order.txt` permutation to R2 or other companion FASTQs.
 - Optional mate-name validation for paired FASTQs.
+- Optional quality score quantization to further reduce compressed size (lossy).
 - JSON run reports with read counts, file sizes, compression ratios, paths,
   bucket details, and paired output details.
 - CPU and memory profiles for each run.
@@ -63,9 +64,14 @@ result, err := squish.Run(ctx, squish.Config{
     BucketStrategy:    "auto",
     BucketCount:       512,
     ClumpKmerLen:      31,
+    ClumpBorder:       1,
+    ClumpRComp:        true,
     CheckPairs:        true,
 })
 ```
+
+Zero values for `ClumpKmerLen` and `ClumpBorder` are normalised to their
+defaults (31 and 1 respectively) by `squish.Run`.
 
 The CLI in `cmd/squish` is intentionally thin: it parses flags, builds a
 `squish.Config`, calls `squish.Run`, and handles process exit codes.
@@ -84,26 +90,28 @@ By default, output files are written under `-outdir output`, so this command:
 ./squish data/test1.fastq.gz sorted.test1.fastq.gz
 ```
 
-writes:
+uses clump sort with external bucketing and writes:
 
 ```text
 output/sorted.test1.fastq.gz
 output/order.txt
 output/report.json
 output/manifest.txt
-output/profile.alpha/cpu.prof
-output/profile.alpha/mem.prof
+output/profile.clump/cpu.prof
+output/profile.clump/mem.prof
 ```
 
-External sorting is the default:
+The default is equivalent to:
 
 ```bash
 ./squish \
-  -engine external \
   -m clump \
+  -engine external \
   -bucket auto \
   -buckets 512 \
   -clumpK 31 \
+  -clumpBorder 1 \
+  -clumpRComp \
   -outdir output \
   data/sample_R1.fastq.gz \
   sample_R1.clump.fastq.gz
@@ -112,31 +120,47 @@ External sorting is the default:
 Use memory mode for smaller files or debugging:
 
 ```bash
-./squish -engine memory -m alpha data/sample.fastq.gz sample.alpha.fastq.gz
+./squish -engine memory data/sample.fastq.gz sample.clump.fastq.gz
 ```
 
 ## Sorting Methods
 
-Use `-m` to choose the method:
+Use `-m` to choose the method (default: `clump`):
 
+- `clump`: groups reads by a pivot k-mer for compression-oriented clustering.
+  For each read, every k-mer window (excluding `-clumpBorder` bases at each
+  end) is canonicalised (min of forward and reverse complement) and hashed
+  with FNV-1a. The window with the highest hash value becomes the sort key.
+  Within a clump, reads are sub-sorted by the position of the pivot k-mer so
+  that consecutive reads have the shared k-mer at the same byte offset,
+  maximising LZ77 back-references. When `-clumpRComp` is on (default), reads
+  whose pivot was on the minus strand are reverse-complemented in the output
+  so all reads in a clump share the same orientation.
 - `alpha`: bytewise sequence sort.
 - `gc`: sort by GC content.
 - `qual`: sort by quality string.
-- `clump`: groups reads by a pivot k-mer for compression-oriented clustering.
-  For each read, every k-mer window is canonicalized (min of forward and
-  reverse complement) and hashed with FNV-1a. The window with the highest
-  hash value becomes the sort key. Reads sharing that k-mer land in the same
-  clump. Using the max-hash pivot (rather than the lex-minimum) avoids
-  over-grouping on low-complexity k-mers such as poly-A runs.
 
-Tune the k-mer length with `-clumpK`. Longer k-mers are more specific and
-give tighter clumps:
+### Clump-specific flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `-clumpK` | `31` | K-mer length for pivot selection. Longer = more specific clumps. |
+| `-clumpBorder` | `1` | Bases excluded from each read end during pivot selection. Read ends are error-prone; excluding them avoids error k-mers becoming pivots. |
+| `-clumpRComp` | `true` | Reverse-complement reads whose pivot k-mer was on the minus strand, normalising orientation within each clump. |
+| `-clumpMinCount` | `0` | Ignore pivot k-mers appearing fewer than this many times (0 = disabled). Filters singleton error k-mers from pivot selection. |
+| `-clumpRawPivot` | `false` | Use the lex-maximum canonical k-mer instead of the max-hash k-mer as pivot. Clusters reads by nucleotide composition rather than hash. |
+
+### Quality quantization
 
 ```bash
--clumpK 31
+-quantize
 ```
 
-The default is `31`.
+Bins quality scores to four Illumina levels (Q2, Q11, Q25, Q37) after
+sorting. This is **lossy** — original quality values cannot be recovered.
+Quality scores are often the largest contributor to compressed FASTQ size, so
+quantization can significantly reduce output file size when quality precision
+is not required downstream.
 
 ## External Buckets
 
@@ -155,8 +179,8 @@ Use `-bucket` to choose the external bucket strategy:
 ./squish -engine external -bucket gc-range -buckets 1024 ...
 ```
 
-Temporary bucket files are created under the output directory, in `tmp/<method>`
-by default.
+Temporary bucket files are written to `output/tmp/<method>` by default (i.e.
+`-outdir`/tmp/`-m`).
 
 ## Paired FASTQ Inputs
 
@@ -168,8 +192,6 @@ Example:
 
 ```bash
 ./squish \
-  -engine external \
-  -m clump \
   -paired data/sample_R2.fastq.gz \
   -pairedOut sample_R2.clump.fastq.gz \
   data/sample_R1.fastq.gz \
@@ -350,7 +372,7 @@ make nextflow-test-run-all-external
 
 # AI Usage
 
-Releases after v0.2 (c385a1) were developed with Codex 5.5.
+Releases after v0.2 (c385a1) were developed with OpenAI Codex 5.5 and Anthropic Claude Sonnet 4.6.
 
 # References
 

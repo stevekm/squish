@@ -94,6 +94,7 @@ func SortReadsClumpOpts(reads *[]fastq.FastqRead, opts ClumpSortOptions) {
 }
 
 const DefaultClumpKmerLen = 31
+const DefaultClumpBorder = 1 // exclude outermost base on each end from pivot selection (matches Clumpify default)
 
 func ClumpKey(read fastq.FastqRead) []byte {
 	return ClumpKeyK(read, DefaultClumpKmerLen)

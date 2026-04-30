@@ -275,6 +275,8 @@ func (b HashBuckets) OrderedFor(sorter SortStrategy) bool {
 }
 
 // StrategyForName maps CLI sort method names to reusable strategy objects.
+// The returned ClumpSort is fully initialised with compression-optimal defaults
+// so callers do not need to know which fields matter.
 func StrategyForName(name string) (SortStrategy, bool) {
 	switch name {
 	case "alpha":
@@ -284,9 +286,19 @@ func StrategyForName(name string) (SortStrategy, bool) {
 	case "qual":
 		return QualitySort{}, true
 	case "clump":
-		return ClumpSort{K: DefaultClumpKmerLen}, true
+		return DefaultClumpSort(), true
 	default:
 		return nil, false
+	}
+}
+
+// DefaultClumpSort returns a ClumpSort configured with compression-optimal
+// defaults: k=31, border=1, rcomp enabled.
+func DefaultClumpSort() ClumpSort {
+	return ClumpSort{
+		K:      DefaultClumpKmerLen,
+		Border: DefaultClumpBorder,
+		RComp:  true,
 	}
 }
 

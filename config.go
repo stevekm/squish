@@ -30,6 +30,7 @@ const DefaultSortEngine = "external"
 const DefaultBucketStrategy = "auto"
 const DefaultExternalBucketCount = 512
 const DefaultClumpKmerLen = _sort.DefaultClumpKmerLen
+const DefaultClumpBorder = _sort.DefaultClumpBorder
 
 type Result struct {
 	Report Report
@@ -138,6 +139,9 @@ func normalizeConfig(config Config) (Config, SortDefinition, error) {
 	}
 	if config.ClumpKmerLen == 0 {
 		config.ClumpKmerLen = DefaultClumpKmerLen
+	}
+	if config.ClumpBorder == 0 {
+		config.ClumpBorder = DefaultClumpBorder
 	}
 	if config.RecordDelim == 0 {
 		config.RecordDelim = RecordDelim
