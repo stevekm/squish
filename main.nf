@@ -73,11 +73,6 @@ process RUN_SQUISH_METHOD {
       -buckets "${buckets}" \\
       -clumpK "${clump_k}" \\
       -m "${method}" \\
-      -orderFile "order.${method}.txt" \\
-      -reportFile "report.${method}.json" \\
-      -manifestFile "manifest.${method}.txt" \\
-      -memProf "mem.${method}.prof" \\
-      -cpuProf "cpu.${method}.prof" \\
       ${paired_arg} \\
       ${paired_out_arg} \\
       "${fastq_in}" \\
@@ -87,11 +82,11 @@ process RUN_SQUISH_METHOD {
       go tool pprof \\
         -pdf \\
         -output "\${method_outdir}/profile.${method}/memprofile.${method}.pdf" \\
-        "\${method_outdir}/profile.${method}/mem.${method}.prof"
+        "\${method_outdir}/profile.${method}/mem.prof"
     fi
 
-    test -s "\${method_outdir}/report.${method}.json"
-    test -s "\${method_outdir}/manifest.${method}.txt"
+    test -s "\${method_outdir}/report.json"
+    test -s "\${method_outdir}/manifest.txt"
     """
 }
 
