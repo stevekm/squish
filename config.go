@@ -108,7 +108,6 @@ func GetSortingMethods() (map[string]SortDefinition, string) {
 		DefaultSortMethod: SortDefinition{DefaultSortMethod, DefaultSortDescription, _sort.SortReadsSequence, _sort.AlphaSort{}},
 		"gc":              SortDefinition{"gc", "GC Content Sort", _sort.SortReadsGC, _sort.GCSort{}},
 		"qual":            SortDefinition{"qual", "Quality score sort", _sort.SortReadsQual, _sort.QualitySort{}},
-		"alpha-heap":      SortDefinition{"alpha-heap", "Sequence alpha heap sort", _sort.HeapSortSequence, _sort.AlphaSort{}},
 		"clump":           SortDefinition{"clump", "Clump-style read clustering for better gzip compression", _sort.SortReadsClump, _sort.ClumpSort{}},
 	}
 

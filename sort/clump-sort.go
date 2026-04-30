@@ -52,7 +52,6 @@ func clumpMinimizer(sequence []byte, k int) []byte {
 	// Use the lexicographically smallest canonical k-mer as the clump key.
 	// Canonicalization compares the forward k-mer to its reverse complement so
 	// reads from opposite strands can still land near each other.
-	sequence = trimLineEnding(sequence)
 	if k < 1 {
 		k = 1
 	}
@@ -60,33 +59,52 @@ func clumpMinimizer(sequence []byte, k int) []byte {
 		return canonicalKmer(sequence)
 	}
 
-	best := canonicalKmer(sequence[:k])
+	// Preallocate one reverse-complement buffer and one best-key buffer for the
+	// entire read so the inner loop produces zero heap allocations.
+	rcBuf := make([]byte, k)
+	best := make([]byte, k)
+
+	reverseComplementInto(sequence[:k], rcBuf)
+	if bytes.Compare(rcBuf, sequence[:k]) < 0 {
+		copy(best, rcBuf)
+	} else {
+		copy(best, sequence[:k])
+	}
+
 	for i := 1; i+k <= len(sequence); i++ {
-		candidate := canonicalKmer(sequence[i : i+k])
-		if bytes.Compare(candidate, best) < 0 {
-			best = candidate
+		kmer := sequence[i : i+k]
+		reverseComplementInto(kmer, rcBuf)
+		var canonical []byte
+		if bytes.Compare(rcBuf, kmer) < 0 {
+			canonical = rcBuf
+		} else {
+			canonical = kmer
+		}
+		if bytes.Compare(canonical, best) < 0 {
+			copy(best, canonical)
 		}
 	}
 	return best
 }
 
 func canonicalKmer(kmer []byte) []byte {
-	// Copy the forward k-mer before comparing because reverseComplement
-	// allocates a new slice; callers can keep whichever slice wins safely.
-	forward := append([]byte(nil), kmer...)
-	reverseComplement := reverseComplement(kmer)
-	if bytes.Compare(reverseComplement, forward) < 0 {
-		return reverseComplement
+	rc := reverseComplement(kmer)
+	if bytes.Compare(rc, kmer) < 0 {
+		return rc
 	}
-	return forward
+	return append([]byte(nil), kmer...)
 }
 
 func reverseComplement(sequence []byte) []byte {
-	reverseComplement := make([]byte, len(sequence))
-	for i, base := range sequence {
-		reverseComplement[len(sequence)-1-i] = complementBase(base)
+	rc := make([]byte, len(sequence))
+	reverseComplementInto(sequence, rc)
+	return rc
+}
+
+func reverseComplementInto(src, dst []byte) {
+	for i, base := range src {
+		dst[len(src)-1-i] = complementBase(base)
 	}
-	return reverseComplement
 }
 
 func complementBase(base byte) byte {
@@ -104,12 +122,6 @@ func complementBase(base byte) byte {
 		// instead of trying to force them into a two-bit A/C/G/T encoding.
 		return 'N'
 	}
-}
-
-func trimLineEnding(line []byte) []byte {
-	line = bytes.TrimSuffix(line, []byte{'\n'})
-	line = bytes.TrimSuffix(line, []byte{'\r'})
-	return line
 }
 
 func ClumpCompare(a, b fastq.FastqRead) bool {

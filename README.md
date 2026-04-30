@@ -122,7 +122,6 @@ Use `-m` to choose the method:
 - `alpha`: bytewise sequence sort.
 - `gc`: sort by GC content.
 - `qual`: sort by quality string.
-- `alpha-heap`: heap-sort implementation of sequence ordering.
 - `clump`: groups reads by canonical minimizer k-mer for compression-oriented
   clustering.
 
@@ -261,7 +260,7 @@ or override inputs:
 nextflow run main.nf \
   --samplesheet samples.csv \
   --engine external \
-  --methods alpha,gc,qual,alpha-heap,clump \
+  --methods alpha,gc,qual,clump \
   --clump_k 31
 ```
 

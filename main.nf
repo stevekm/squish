@@ -14,9 +14,9 @@ def splitList(value) {
 /*
  * Nextflow version of the Makefile test-run-all recipes.
  *
- * The workflow runs the same five methods used by the Makefile:
+ * The workflow runs the same four methods used by the Makefile:
  *
- *   alpha, gc, qual, alpha-heap, clump
+ *   alpha, gc, qual, clump
  *
  * Use --engine memory to mirror `make test-run-all`.
  * Use --engine external to mirror `make test-run-all-external`.

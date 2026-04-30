@@ -7,9 +7,6 @@ import (
 
 // using built-in Go sort methods
 func SortReadsSequence(reads *[]fastq.FastqRead) {
-	// put the read sorting logic in here!
-	//
-	// sort in-place based on the string of the sequence
 	sorter := AlphaSort{}
 	go_sort.Slice((*reads), func(i, j int) bool { return sorter.Less((*reads)[i], (*reads)[j]) })
 }

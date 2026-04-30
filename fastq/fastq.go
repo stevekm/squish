@@ -4,6 +4,7 @@ package fastq
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -65,19 +66,19 @@ func (a *FastqArena) Append(line []byte) (int, int) {
 }
 
 func (read FastqRead) Id() []byte {
-	return read.Arena.Data[read.IdOffset : read.IdOffset+read.IdSize]
+	return bytes.TrimRight(read.Arena.Data[read.IdOffset:read.IdOffset+read.IdSize], "\r\n")
 }
 
 func (read FastqRead) Sequence() []byte {
-	return read.Arena.Data[read.SequenceOffset : read.SequenceOffset+read.SequenceSize]
+	return bytes.TrimRight(read.Arena.Data[read.SequenceOffset:read.SequenceOffset+read.SequenceSize], "\r\n")
 }
 
 func (read FastqRead) Plus() []byte {
-	return read.Arena.Data[read.PlusOffset : read.PlusOffset+read.PlusSize]
+	return bytes.TrimRight(read.Arena.Data[read.PlusOffset:read.PlusOffset+read.PlusSize], "\r\n")
 }
 
 func (read FastqRead) QualityScores() []byte {
-	return read.Arena.Data[read.QualityScoreOffset : read.QualityScoreOffset+read.QualityScoreSize]
+	return bytes.TrimRight(read.Arena.Data[read.QualityScoreOffset:read.QualityScoreOffset+read.QualityScoreSize], "\r\n")
 }
 
 func (read FastqRead) Record() []byte {
@@ -168,7 +169,7 @@ func CreateFastqReadE(idOffset int, idSize int, reader _io.InputFileReader, deli
 		QualityScoreOffset: qualityScoresOffset,
 		QualityScoreSize:   qualityScoresSize,
 		I:                  *i,
-		GCContent:          CalcGCContent(arena.Data[sequenceOffset : sequenceOffset+sequenceSize]),
+		GCContent:          CalcGCContent(bytes.TrimRight(arena.Data[sequenceOffset:sequenceOffset+sequenceSize], "\r\n")),
 	}
 	return read, nil
 }

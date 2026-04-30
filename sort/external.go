@@ -2,6 +2,7 @@ package sort
 
 import (
 	"bufio"
+	"container/list"
 	"errors"
 	"fmt"
 	"io"
@@ -54,6 +55,56 @@ type bucketWriter struct {
 // large number of possible buckets. Closed buckets are reopened in append mode
 // if more reads later map to the same bucket.
 const maxOpenBucketWriters = 64
+
+// lruWriters tracks open bucket writers and evicts the least-recently-used
+// bucket when the open count would exceed the cap.
+type lruWriters struct {
+	open  map[int]*bucketWriter
+	elems map[int]*list.Element // bucketID -> list element
+	order *list.List            // front = most recent, back = least recent
+	cap   int
+}
+
+func newLRUWriters(cap int) *lruWriters {
+	return &lruWriters{
+		open:  make(map[int]*bucketWriter),
+		elems: make(map[int]*list.Element),
+		order: list.New(),
+		cap:   cap,
+	}
+}
+
+func (l *lruWriters) get(id int) (*bucketWriter, bool) {
+	elem, ok := l.elems[id]
+	if !ok {
+		return nil, false
+	}
+	l.order.MoveToFront(elem)
+	return l.open[id], true
+}
+
+func (l *lruWriters) put(id int, bucket *bucketWriter) {
+	l.elems[id] = l.order.PushFront(id)
+	l.open[id] = bucket
+}
+
+// evictLRU closes and removes the least-recently-used bucket writer.
+func (l *lruWriters) evictLRU() {
+	back := l.order.Back()
+	id := back.Value.(int)
+	closeBucketWriter(l.open[id])
+	l.order.Remove(back)
+	delete(l.elems, id)
+	delete(l.open, id)
+}
+
+func (l *lruWriters) full() bool { return len(l.open) >= l.cap }
+
+func (l *lruWriters) closeAll() {
+	for _, bucket := range l.open {
+		closeBucketWriter(bucket)
+	}
+}
 
 // RunExternalBucketSort streams the input into temporary bucket files, then
 // sorts and emits one bucket at a time.
@@ -114,19 +165,15 @@ func writeBuckets(config ExternalBucketConfig, bucketer BucketStrategy) (map[int
 	}
 	defer reader.Close()
 
-	writers := map[int]*bucketWriter{}
+	lru := newLRUWriters(maxOpenBucketWriters)
+	defer lru.closeAll()
+
 	bucketPaths := map[int]string{}
 	bucketOrderPaths := map[int]string{}
 	bucketSizes := map[int]int64{}
 	totalReads := 0
 	totalBytes := 0
 	readIndex := 0
-
-	defer func() {
-		for _, bucket := range writers {
-			closeBucketWriter(bucket)
-		}
-	}()
 
 	for {
 		// ReadNextRead returns a small one-record arena, so this loop does not
@@ -144,19 +191,18 @@ func writeBuckets(config ExternalBucketConfig, bucketer BucketStrategy) (map[int
 			return nil, nil, nil, 0, 0, fmt.Errorf("bucket id %d outside range [0, %d)", bucketID, bucketer.BucketCount())
 		}
 
-		bucket, ok := writers[bucketID]
+		bucket, ok := lru.get(bucketID)
 		if !ok {
-			if len(writers) >= maxOpenBucketWriters {
-				// Close any currently open bucket to stay under the descriptor
-				// cap. The bucket will be reopened in append mode when needed.
-				closeOneBucketWriter(writers)
+			if lru.full() {
+				// Evict the least-recently-used bucket to stay under the
+				// descriptor cap. It will be reopened in append mode if needed.
+				lru.evictLRU()
 			}
-			var err error
 			bucket, err = openBucketWriter(config.TempDir, bucketID)
 			if err != nil {
 				return nil, nil, nil, 0, 0, err
 			}
-			writers[bucketID] = bucket
+			lru.put(bucketID, bucket)
 			bucketPaths[bucketID] = bucket.path
 			bucketOrderPaths[bucketID] = bucket.orderPath
 		}
@@ -198,16 +244,6 @@ func openBucketWriter(tempDir string, bucketID int) (*bucketWriter, error) {
 		orderWriter: bufio.NewWriter(orderFile),
 		orderPath:   orderPath,
 	}, nil
-}
-
-// closeOneBucketWriter evicts one open bucket writer from the open-writer map.
-// Any bucket is acceptable because future writes reopen the file in append mode.
-func closeOneBucketWriter(writers map[int]*bucketWriter) {
-	for bucketID, bucket := range writers {
-		closeBucketWriter(bucket)
-		delete(writers, bucketID)
-		return
-	}
 }
 
 // closeBucketWriter flushes both buffered files before closing them. Errors are

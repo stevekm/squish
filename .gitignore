@@ -20,3 +20,4 @@ work
 .nextflow*
 output-nextflow*
 *.fastq*
+tadd

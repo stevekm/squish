@@ -36,10 +36,10 @@ func TestLoadReadsStoresRecordsInArena(t *testing.T) {
 	if got := string(reads[0].Record()); got != "@read2\nTTTT\n+\n!!!!\n" {
 		t.Fatalf("first record = %q", got)
 	}
-	if got := string(reads[1].Sequence()); got != "ACGT\n" {
+	if got := string(reads[1].Sequence()); got != "ACGT" {
 		t.Fatalf("second sequence = %q", got)
 	}
-	if got := string(reads[1].QualityScores()); got != "IIII\n" {
+	if got := string(reads[1].QualityScores()); got != "IIII" {
 		t.Fatalf("second quality = %q", got)
 	}
 }

@@ -81,8 +81,14 @@ type ClumpSort struct {
 
 func (ClumpSort) Name() string { return "clump" }
 
+// Less exists only to satisfy SortStrategy. ClumpSort cannot implement a
+// correct O(1) comparison without precomputed keys, so all sort paths bypass
+// this method: the memory engine calls SortReadsClumpK directly, and the
+// external engine type-asserts to Sort(). The panic catches any future code
+// that accidentally routes clump through a generic Less-based sort loop,
+// which would silently recompute the minimizer on every comparison.
 func (s ClumpSort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
-	return ClumpCompareK(a, b, s.k())
+	panic("ClumpSort.Less must not be used in a sort loop; call Sort() to get O(n log n) key precomputation")
 }
 
 func (s ClumpSort) Sort(reads []fastq.FastqRead) {
@@ -247,7 +253,7 @@ func (b HashBuckets) OrderedFor(sorter SortStrategy) bool {
 // StrategyForName maps CLI sort method names to reusable strategy objects.
 func StrategyForName(name string) (SortStrategy, bool) {
 	switch name {
-	case "alpha", "alpha-heap":
+	case "alpha":
 		return AlphaSort{}, true
 	case "gc":
 		return GCSort{}, true
@@ -266,7 +272,7 @@ func StrategyForName(name string) (SortStrategy, bool) {
 func DefaultBucketStrategy(sorter SortStrategy, bucketCount int) BucketStrategy {
 	switch sorter.Name() {
 	case "alpha":
-		return NewSequencePrefixBuckets(2)
+		return NewSequencePrefixBuckets(1)
 	case "gc":
 		return NewGCRangeBuckets(bucketCount)
 	case "qual":
