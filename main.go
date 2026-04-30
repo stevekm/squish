@@ -181,6 +181,9 @@ func MinCliPosArgs(args []string, n int) {
 }
 
 func OutputPath(outputDir string, itemPath string) string {
+	// All user-supplied output filenames are interpreted relative to outputDir.
+	// The Rel check prevents paths such as "../outside.fastq.gz" from escaping
+	// the run directory.
 	outputPath := filepath.Join(outputDir, itemPath)
 	relPath, err := filepath.Rel(outputDir, outputPath)
 	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) {
@@ -386,6 +389,8 @@ func main() {
 		log.Fatalf("ERROR: clumpK must be >= 1, got %v\n", *clumpKmerLen)
 	}
 	if sortMethod.CLIArg == "clump" {
+		// The clump k-mer length is configured after flag parsing, so replace
+		// the default clump function and strategy with k-aware versions here.
 		sortMethod.Func = func(reads *[]fastq.FastqRead) {
 			_sort.SortReadsClumpK(reads, *clumpKmerLen)
 		}
@@ -482,6 +487,8 @@ func main() {
 	}
 	var bucketReport *BucketReport
 	if config.SortEngine == "external" {
+		// Recreate the selected bucket strategy only for reporting whether the
+		// emitted bucket order is a true global ordering for this sorter.
 		bucketer := GetBucketStrategy(config)
 		bucketReport = &BucketReport{
 			Strategy:   runStats.BucketName,

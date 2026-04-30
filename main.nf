@@ -86,6 +86,10 @@ workflow {
     methods_ch = Channel
         .fromList(params.methods.tokenize(',').collect { it.trim() }.findAll { it })
 
+    /*
+     * combine creates the Cartesian product of samplesheet rows and sort
+     * methods, so every sample is run through every configured sorter.
+     */
     sample_methods_ch = samples_ch
         .combine(methods_ch).view()
 
@@ -99,6 +103,10 @@ workflow {
         Channel.value(params.make_pdf as boolean)
     )
 
+    /*
+     * Each process emits one JSON report. Convert those reports into compact
+     * CSV rows for quick comparison across samples and methods.
+     */
     RUN_SQUISH_METHOD.out.report_json.map{ jsonFile ->
         def jsonSlurper = new JsonSlurper()
         def Map json = (Map) new JsonSlurper().parseText(jsonFile.text)

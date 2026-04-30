@@ -257,6 +257,9 @@ func sortBucketsToOutput(
 			return err
 		}
 		if clumpSorter, ok := sorter.(interface{ Sort([]fastq.FastqRead) }); ok {
+			// ClumpSort has a specialized Sort method that precomputes clump
+			// keys once per read. Falling back to sorter.Less would recompute
+			// minimizers during every comparison and is much slower.
 			clumpSorter.Sort(reads)
 		} else {
 			go_sort.Slice(reads, func(i, j int) bool {

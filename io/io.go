@@ -37,9 +37,8 @@ func (w *OutputFileWriter) Close() {
 }
 
 func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.File, *os.File)
-	// open the input file for reading
-	// the caller needs to run this;
-	// defer reader.Close()
+	// GetReader hides whether the input is plain FASTQ or gzip-compressed.
+	// Callers always receive a buffered reader and only need to defer Close().
 	var reader *bufio.Reader
 	var file *os.File
 	var gzFile *os.File
@@ -67,9 +66,8 @@ func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.Fil
 }
 
 func GetWriter(outputFilepath string) OutputFileWriter { //(*os.File, *gzip.Writer)
-	// initialize the output file writer
-	// the caller needs to run this;
-	// defer writer.Close()
+	// All squish outputs are gzip-compressed FASTQ files. The caller writes raw
+	// FASTQ records to Writer and Close flushes the gzip stream and file.
 	outputFile, err := os.Create(outputFilepath)
 	if err != nil {
 		log.Fatalf("Error creating output file: %v\n", err)

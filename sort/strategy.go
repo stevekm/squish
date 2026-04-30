@@ -74,6 +74,8 @@ func (QualitySort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
 // ClumpSort reuses the clump comparator, which is intended to group similar
 // reads for better compression rather than to model a biological ordering.
 type ClumpSort struct {
+	// K controls the minimizer length used to group reads. A zero value falls
+	// back to DefaultClumpKmerLen so older call sites remain valid.
 	K int
 }
 
@@ -201,6 +203,8 @@ type HashBuckets struct {
 
 func NewHashBuckets(bucketCount int) HashBuckets {
 	return newHashBuckets("hash", bucketCount, func(read fastq.FastqRead) []byte {
+		// Use both sequence and quality bytes so hash buckets spread reads more
+		// evenly than sequence-only hashing when duplicate reads are common.
 		key := make([]byte, 0, len(read.Sequence())+len(read.QualityScores()))
 		key = append(key, read.Sequence()...)
 		key = append(key, read.QualityScores()...)
@@ -209,6 +213,9 @@ func NewHashBuckets(bucketCount int) HashBuckets {
 }
 
 func NewClumpBuckets(bucketCount int, k int) HashBuckets {
+	// External clump mode hashes the minimizer key rather than the whole record.
+	// That puts reads with the same clump key in the same bucket before each
+	// bucket is sorted internally.
 	return newHashBuckets("clump-minimizer", bucketCount, func(read fastq.FastqRead) []byte {
 		return ClumpKeyK(read, k)
 	})
@@ -265,6 +272,8 @@ func DefaultBucketStrategy(sorter SortStrategy, bucketCount int) BucketStrategy 
 	case "qual":
 		return NewQualityPrefixBuckets(1)
 	case "clump":
+		// Preserve the configured clump k-mer length when auto-selecting the
+		// external bucket strategy for clump sort.
 		clumpSorter, ok := sorter.(ClumpSort)
 		if !ok {
 			return NewClumpBuckets(bucketCount, DefaultClumpKmerLen)

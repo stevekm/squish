@@ -8,7 +8,10 @@ import (
 
 type clumpRead struct {
 	read fastq.FastqRead
-	key  []byte
+	// key is precomputed once per read so sort comparisons do not rescan the
+	// sequence on every Less call. This is important because sort comparisons
+	// happen O(n log n) times.
+	key []byte
 }
 
 func SortReadsClump(reads *[]fastq.FastqRead) {
@@ -16,6 +19,8 @@ func SortReadsClump(reads *[]fastq.FastqRead) {
 }
 
 func SortReadsClumpK(reads *[]fastq.FastqRead, k int) {
+	// Build a sidecar slice containing each read plus its minimizer key. The
+	// final loop copies the sorted read order back into the caller's slice.
 	clumpReads := make([]clumpRead, len(*reads))
 	for i, read := range *reads {
 		clumpReads[i] = clumpRead{
@@ -44,6 +49,9 @@ func ClumpKeyK(read fastq.FastqRead, k int) []byte {
 }
 
 func clumpMinimizer(sequence []byte, k int) []byte {
+	// Use the lexicographically smallest canonical k-mer as the clump key.
+	// Canonicalization compares the forward k-mer to its reverse complement so
+	// reads from opposite strands can still land near each other.
 	sequence = trimLineEnding(sequence)
 	if k < 1 {
 		k = 1
@@ -63,6 +71,8 @@ func clumpMinimizer(sequence []byte, k int) []byte {
 }
 
 func canonicalKmer(kmer []byte) []byte {
+	// Copy the forward k-mer before comparing because reverseComplement
+	// allocates a new slice; callers can keep whichever slice wins safely.
 	forward := append([]byte(nil), kmer...)
 	reverseComplement := reverseComplement(kmer)
 	if bytes.Compare(reverseComplement, forward) < 0 {
@@ -90,6 +100,8 @@ func complementBase(base byte) byte {
 	case 'T', 't':
 		return 'A'
 	default:
+		// Ambiguous bases are deliberately retained as an ambiguous placeholder
+		// instead of trying to force them into a two-bit A/C/G/T encoding.
 		return 'N'
 	}
 }

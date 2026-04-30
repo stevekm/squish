@@ -13,8 +13,12 @@ import (
 	"strconv"
 )
 
-// NOTE: fastq read methods https://pkg.go.dev/github.com/biogo/biogo/io/seqio/fastq#Reader.Read
-// https://en.wikipedia.org/wiki/FASTQ_format
+// FastqRead is a lightweight view into a FastqArena.
+//
+// Instead of allocating four separate byte slices per read, each field stores
+// an offset and size into the shared arena buffer. That keeps the read structs
+// cheap to copy during sorting while preserving fast access to the original
+// FASTQ record bytes.
 type FastqRead struct {
 	Arena              *FastqArena
 	RecordOffset       int
@@ -31,10 +35,16 @@ type FastqRead struct {
 	GCContent          float64
 }
 
+// FastqArena owns the raw FASTQ bytes referenced by one or more FastqRead
+// values. In memory mode there is one arena for the full input; in external
+// bucket mode each streamed record or loaded bucket gets a smaller arena.
 type FastqArena struct {
 	Data []byte
 }
 
+// Append adds a line or record fragment to the arena and returns the range
+// that was appended. Callers store those ranges on FastqRead instead of
+// retaining separate slices.
 func (a *FastqArena) Append(line []byte) (int, int) {
 	offset := len(a.Data)
 	a.Data = append(a.Data, line...)
@@ -77,6 +87,11 @@ func CalcGCContent(sequence []byte) float64 {
 	return gcContent
 }
 
+// ReadLineIntoArena reads one delimited FASTQ line into the arena.
+//
+// bufio.Reader.ReadSlice can return ErrBufferFull for long lines. The loop
+// keeps appending chunks until it sees the delimiter or EOF, so the parser can
+// handle reads longer than the bufio internal buffer.
 func ReadLineIntoArena(reader _io.InputFileReader, delim byte, arena *FastqArena) (int, int, error) {
 	offset := len(arena.Data)
 	for {
@@ -101,9 +116,9 @@ func ReadLineIntoArena(reader _io.InputFileReader, delim byte, arena *FastqArena
 }
 
 func CreateFastqRead(idOffset int, idSize int, reader _io.InputFileReader, delim *byte, i *int, arena *FastqArena) FastqRead {
-	// reads the next three lines from the reader,
-	// and combined with the first line,
-	// makes a new FastqRead entry
+	// The header line has already been read. Pull the remaining three FASTQ
+	// lines into the same arena so Record() can later return the exact original
+	// four-line record for output.
 	sequenceOffset, sequenceSize, err := ReadLineIntoArena(reader, *delim, arena)
 	if err != nil {
 		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)
@@ -174,6 +189,8 @@ func WriteReads(reads *[]FastqRead, writer _io.OutputFileWriter) {
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte) int {
+	// LoadReads is the memory-engine parser: all records share one arena and
+	// the returned FastqRead structs only carry offsets into that buffer.
 	var totalSize int = 0
 	var i int = 0
 	arena := &FastqArena{}
