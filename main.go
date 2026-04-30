@@ -31,6 +31,7 @@ const defaultCpuProfileFilename string = "cpu.prof"
 const defaultMemProfileFilename string = "mem.prof"
 const defaultOrderFilename string = "order.txt"
 const defaultReportFilename string = "report.json"
+const defaultManifestFilename string = "manifest.txt"
 const defaultProfileDirnameBase string = "profile"
 const defaultOutputDirNameBase string = "output"
 const defaultSortEngine string = "external"
@@ -167,6 +168,7 @@ type Report struct {
 	Output               FileReport     `json:"output"`
 	OrderFile            FileReport     `json:"order_file"`
 	ReportFile           FileReport     `json:"report_file"`
+	ManifestFile         FileReport     `json:"manifest_file"`
 	PairedOutputs        []PairedReport `json:"paired_outputs,omitempty"`
 	Profile              ProfileReport  `json:"profile"`
 	Bucket               *BucketReport  `json:"bucket,omitempty"`
@@ -187,6 +189,21 @@ func WriteReport(report Report, reportPath string) {
 		log.Fatalf("ERROR: could not write report file %v: %v\n", reportPath, err)
 	}
 	slog.Debug("report written", "path", reportPath)
+}
+
+func WriteManifest(outputPaths []string, manifestPath string) {
+	lines := make([]string, 0, len(outputPaths))
+	for _, outputPath := range outputPaths {
+		lines = append(lines, AbsolutePath(outputPath))
+	}
+	manifestText := strings.Join(lines, "\n")
+	if manifestText != "" {
+		manifestText += "\n"
+	}
+	if err := os.WriteFile(manifestPath, []byte(manifestText), 0644); err != nil {
+		log.Fatalf("ERROR: could not write manifest file %v: %v\n", manifestPath, err)
+	}
+	slog.Debug("manifest written", "path", manifestPath, "outputs", len(lines))
 }
 
 func PrintVersionAndQuit() {
@@ -412,6 +429,7 @@ type Config struct {
 	TimeStart             time.Time
 	OrderFilename         string
 	ReportFilename        string
+	ManifestFilename      string
 	OutputDir             string
 	SortEngine            string
 	BucketStrategy        string
@@ -458,6 +476,7 @@ func main() {
 	memProfileFilename := flag.String("memProf", defaultMemProfileFilename, "Memory profile filename")
 	orderFilename := flag.String("orderFile", defaultOrderFilename, "File to record the order of sorted fastq reads")
 	reportFilename := flag.String("reportFile", defaultReportFilename, "JSON report filename")
+	manifestFilename := flag.String("manifestFile", defaultManifestFilename, "Text manifest filename listing absolute paths to output FASTQ files")
 	outputDirArg := flag.String("outdir", defaultOutputDirNameBase, "Output dir")
 	sortEngine := flag.String("engine", defaultSortEngine, "Sort engine. Options: memory, external")
 	bucketStrategy := flag.String("bucket", defaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash, clump-minimizer")
@@ -481,6 +500,7 @@ func main() {
 	outputFilepath := OutputPath(outputDir, outputFilenameArg)
 	orderFilepath := OutputPath(outputDir, *orderFilename)
 	reportFilepath := OutputPath(outputDir, *reportFilename)
+	manifestFilepath := OutputPath(outputDir, *manifestFilename)
 	tempDir := OutputPath(outputDir, *tempDirArg)
 	pairedInputArgs := SplitPathList(*pairedFastqArg)
 	pairedOutputArgs := SplitPathList(*pairedOutArg)
@@ -531,6 +551,7 @@ func main() {
 		TimeStart:             timeStart,
 		OrderFilename:         orderFilepath,
 		ReportFilename:        reportFilepath,
+		ManifestFilename:      manifestFilepath,
 		OutputDir:             outputDir,
 		SortEngine:            *sortEngine,
 		BucketStrategy:        *bucketStrategy,
@@ -557,6 +578,10 @@ func main() {
 	reportFileDir := filepath.Dir(config.ReportFilename)
 	if err := os.MkdirAll(reportFileDir, 0755); err != nil {
 		log.Fatalf("ERROR: could not create report file directory %v: %v\n", reportFileDir, err)
+	}
+	manifestFileDir := filepath.Dir(config.ManifestFilename)
+	if err := os.MkdirAll(manifestFileDir, 0755); err != nil {
+		log.Fatalf("ERROR: could not create manifest file directory %v: %v\n", manifestFileDir, err)
 	}
 	for _, pairedOutputPath := range config.PairedOutputFilepaths {
 		pairedOutputDir := filepath.Dir(pairedOutputPath)
@@ -630,7 +655,9 @@ func main() {
 		}
 	}
 	pairedReports := make([]PairedReport, 0, len(pairedStats))
+	manifestOutputPaths := []string{config.OutputFilepath}
 	for _, pairedStat := range pairedStats {
+		manifestOutputPaths = append(manifestOutputPaths, pairedStat.OutputPath)
 		pairedReports = append(pairedReports, PairedReport{
 			Input: FileReport{
 				Path:      pairedStat.InputPath,
@@ -649,6 +676,8 @@ func main() {
 			OutputSizeBytes:   pairedStat.OutputSizeBytes,
 		})
 	}
+	WriteManifest(manifestOutputPaths, config.ManifestFilename)
+	manifestFileSize := LogFileSize(config.ManifestFilename, "Manifest")
 
 	slog.Debug(
 		"size reduced",
@@ -683,6 +712,11 @@ func main() {
 		},
 		ReportFile: FileReport{
 			Path: config.ReportFilename,
+		},
+		ManifestFile: FileReport{
+			Path:      config.ManifestFilename,
+			SizeBytes: manifestFileSize,
+			SizeHuman: bytefmt.ByteSize(uint64(manifestFileSize)),
 		},
 		PairedOutputs: pairedReports,
 		Profile: ProfileReport{

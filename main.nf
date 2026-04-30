@@ -48,6 +48,7 @@ process RUN_SQUISH_METHOD {
     output:
     path "${sample_id}/${method}", emit: method_results
     path "${sample_id}/${method}/report*json", emit : report_json
+    path "${sample_id}/${method}/manifest*txt", emit : manifest_txt
 
     /*
      * Each sample/method pair gets its own result directory. This avoids
@@ -74,6 +75,7 @@ process RUN_SQUISH_METHOD {
       -m "${method}" \\
       -orderFile "order.${method}.txt" \\
       -reportFile "report.${method}.json" \\
+      -manifestFile "manifest.${method}.txt" \\
       -memProf "mem.${method}.prof" \\
       -cpuProf "cpu.${method}.prof" \\
       ${paired_arg} \\
@@ -89,6 +91,7 @@ process RUN_SQUISH_METHOD {
     fi
 
     test -s "\${method_outdir}/report.${method}.json"
+    test -s "\${method_outdir}/manifest.${method}.txt"
     """
 }
 
