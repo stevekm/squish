@@ -28,7 +28,7 @@ func main() {
 	bucketCount := flag.Int("buckets", squish.DefaultExternalBucketCount, "External bucket count for bucket strategies that use a configurable count")
 	clumpKmerLen := flag.Int("clumpK", squish.DefaultClumpKmerLen, "K-mer length used by the clump minimizer")
 	clumpMinCount := flag.Int("clumpMinCount", 0, "Clump: ignore pivot k-mers appearing fewer than this many times (0 = disabled)")
-	clumpRComp := flag.Bool("clumpRComp", false, "Clump: reverse-complement reads whose pivot k-mer was on the minus strand")
+	clumpRComp := flag.Bool("clumpRComp", true, "Clump: reverse-complement reads whose pivot k-mer was on the minus strand")
 	clumpRawPivot := flag.Bool("clumpRawPivot", false, "Clump: use lex-max canonical k-mer as pivot instead of max-hash k-mer")
 	clumpBorder := flag.Int("clumpBorder", 1, "Clump: bases to exclude from each read end during pivot selection (Clumpify default: 1)")
 	quantizeQuality := flag.Bool("quantize", false, "Bin quality scores to 4 Illumina levels after sorting (lossy — reduces quality precision)")

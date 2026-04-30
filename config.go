@@ -17,8 +17,8 @@ var Version = "foo-version"
 
 const FastqHeaderChar byte = '@'
 const RecordDelim byte = '\n'
-const DefaultSortMethod = "alpha"
-const DefaultSortDescription = "Alphabetical sort on sequence"
+const DefaultSortMethod = "clump"
+const DefaultSortDescription = "Clump-style read clustering for better gzip compression"
 const DefaultCPUProfileFilename = "cpu.prof"
 const DefaultMemProfileFilename = "mem.prof"
 const DefaultOrderFilename = "order.txt"
@@ -110,10 +110,10 @@ func ConfigureLogging() {
 
 func GetSortingMethods() (map[string]SortDefinition, string) {
 	sortMethodMap := map[string]SortDefinition{
-		DefaultSortMethod: SortDefinition{DefaultSortMethod, DefaultSortDescription, _sort.SortReadsSequence, _sort.AlphaSort{}},
-		"gc":              SortDefinition{"gc", "GC Content Sort", _sort.SortReadsGC, _sort.GCSort{}},
-		"qual":            SortDefinition{"qual", "Quality score sort", _sort.SortReadsQual, _sort.QualitySort{}},
-		"clump":           SortDefinition{"clump", "Clump-style read clustering for better gzip compression", _sort.SortReadsClump, _sort.ClumpSort{}},
+		"alpha": SortDefinition{"alpha", "Alphabetical sort on sequence", _sort.SortReadsSequence, _sort.AlphaSort{}},
+		"gc":    SortDefinition{"gc", "GC Content Sort", _sort.SortReadsGC, _sort.GCSort{}},
+		"qual":  SortDefinition{"qual", "Quality score sort", _sort.SortReadsQual, _sort.QualitySort{}},
+		"clump": SortDefinition{"clump", "Clump-style read clustering for better gzip compression", _sort.SortReadsClump, _sort.ClumpSort{}},
 	}
 
 	sortMethodsDescr := map[string]string{}
