@@ -31,5 +31,13 @@ go build -o ./squish ./main.go
 
 (Makefile recipe for building is also included)
 
+# References
 
+Based on the concepts behind Clumpify by Brian Bushnell
+
+- https://www.biostars.org/p/225338/
+  - https://github.com/BioInfoTools/BBMap/blob/master/current/clump/Clumpify.java
+  - https://github.com/BioInfoTools/BBMap/blob/master/sh/clumpify.sh
+
+Inspired by https://rewrites.bio/ by Phil Ewels
 
