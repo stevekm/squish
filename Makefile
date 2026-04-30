@@ -6,6 +6,12 @@ clean:
 	go mod tidy
 	gofmt -l -w .
 
+test:
+	tmp_cache="$$(mktemp -d)" ; \
+	trap 'rm -rf "$$tmp_cache"' EXIT ; \
+	GOCACHE="$$tmp_cache" go test -count=1 ./...
+.PHONY:test
+
 SRC:=main.go
 BIN:=squish
 FASTQGZ:=data/test1.fastq.gz
