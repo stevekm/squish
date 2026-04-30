@@ -18,9 +18,8 @@ RUN go mod download
 # https://stackoverflow.com/questions/60450479/using-arg-and-env-in-dockerfile
 ARG Version=foo-docker-version
 
-# Copy the full Go program and CLI package.
-COPY squish.go ./
-COPY squish_test.go ./
+# Copy the root library package, tests, CLI package, and implementation packages.
+COPY *.go ./
 COPY cmd ./cmd
 COPY fastq ./fastq
 COPY fastqio ./fastqio
