@@ -29,6 +29,7 @@ type ClumpSortOptions struct {
 	MinCount int  // ignore pivot k-mers appearing fewer than MinCount times (0 = disabled)
 	RComp    bool // reverse-complement reads whose pivot was on the minus strand
 	RawPivot bool // pick the lex-max canonical k-mer instead of the max-hash k-mer
+	Border   int  // number of bases excluded from each end of the read during pivot selection
 }
 
 // SortReadsClump sorts using default k and no extra options.
@@ -60,9 +61,14 @@ func SortReadsClumpOpts(reads *[]fastq.FastqRead, opts ClumpSortOptions) {
 		}
 	}
 
+	border := opts.Border
+	if border < 0 {
+		border = 0
+	}
+
 	clumpReads := make([]clumpRead, len(*reads))
 	for i, read := range *reads {
-		key, pos, rcFlipped := clumpMinimizerFull(read.Sequence(), k, opts.RawPivot, eligible)
+		key, pos, rcFlipped := clumpMinimizerFull(read.Sequence(), k, opts.RawPivot, eligible, border)
 		clumpReads[i] = clumpRead{
 			read:      read,
 			key:       key,
@@ -94,7 +100,7 @@ func ClumpKey(read fastq.FastqRead) []byte {
 }
 
 func ClumpKeyK(read fastq.FastqRead, k int) []byte {
-	key, _, _ := clumpMinimizerFull(read.Sequence(), k, false, nil)
+	key, _, _ := clumpMinimizerFull(read.Sequence(), k, false, nil, 0)
 	return key
 }
 
@@ -125,9 +131,16 @@ func hashKmer(kmer []byte) uint64 {
 // When eligible is non-nil, only k-mers for which eligible returns true are
 // candidates. If no k-mer passes the filter, a nil key is returned (the read
 // sorts into an unclustered group at the front).
-func clumpMinimizerFull(sequence []byte, k int, rawPivot bool, eligible func([]byte) bool) (key []byte, pos int, rcFlipped bool) {
+func clumpMinimizerFull(sequence []byte, k int, rawPivot bool, eligible func([]byte) bool, border int) (key []byte, pos int, rcFlipped bool) {
 	if k < 1 {
 		k = 1
+	}
+	if border < 0 {
+		border = 0
+	}
+	// If the border-trimmed region is too short, fall back to no border.
+	if border > 0 && len(sequence)-2*border < k {
+		border = 0
 	}
 	if len(sequence) <= k {
 		canon := canonicalKmer(sequence)
@@ -145,7 +158,7 @@ func clumpMinimizerFull(sequence []byte, k int, rawPivot bool, eligible func([]b
 	var bestHash uint64
 	bestRC := false
 
-	for i := 0; i+k <= len(sequence); i++ {
+	for i := border; i+k <= len(sequence)-border; i++ {
 		kmer := sequence[i : i+k]
 		reverseComplementInto(kmer, rcBuf)
 		thisRC := bytes.Compare(rcBuf, kmer) < 0
@@ -263,8 +276,8 @@ func ClumpCompare(a, b fastq.FastqRead) bool {
 }
 
 func ClumpCompareK(a, b fastq.FastqRead, k int) bool {
-	keyA, posA, rcA := clumpMinimizerFull(a.Sequence(), k, false, nil)
-	keyB, posB, rcB := clumpMinimizerFull(b.Sequence(), k, false, nil)
+	keyA, posA, rcA := clumpMinimizerFull(a.Sequence(), k, false, nil, 0)
+	keyB, posB, rcB := clumpMinimizerFull(b.Sequence(), k, false, nil, 0)
 	return ClumpReadLess(
 		clumpRead{read: a, key: keyA, pivotPos: posA, rcFlipped: rcA},
 		clumpRead{read: b, key: keyB, pivotPos: posB, rcFlipped: rcB},

@@ -91,6 +91,10 @@ type ClumpSort struct {
 	// content) rather than by hash, which can slightly improve compression for
 	// datasets with strong GC bias.
 	RawPivot bool
+	// Border is the number of bases excluded from each end of the read when
+	// selecting the pivot k-mer. Read ends are more error-prone; excluding them
+	// avoids pivot k-mers that contain sequencing errors. Clumpify defaults to 1.
+	Border int
 }
 
 func (ClumpSort) Name() string { return "clump" }
@@ -111,6 +115,7 @@ func (s ClumpSort) Sort(reads []fastq.FastqRead) {
 		MinCount: s.MinCount,
 		RComp:    s.RComp,
 		RawPivot: s.RawPivot,
+		Border:   s.Border,
 	})
 }
 

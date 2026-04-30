@@ -89,6 +89,7 @@ type Config struct {
 	ClumpMinCount         int  // filter pivot k-mers appearing fewer than this many times (0 = disabled)
 	ClumpRComp            bool // reverse-complement minus-strand reads after clump sort
 	ClumpRawPivot         bool // use lex-max canonical k-mer instead of max-hash pivot
+	ClumpBorder           int  // bases excluded from each read end during pivot selection (Clumpify default: 1)
 	QuantizeQuality       bool // bin quality scores to 4 Illumina levels after sorting (lossy)
 	TempDir               string
 	ProfileDir            string
@@ -166,6 +167,7 @@ func normalizeConfig(config Config) (Config, SortDefinition, error) {
 			MinCount: config.ClumpMinCount,
 			RComp:    config.ClumpRComp,
 			RawPivot: config.ClumpRawPivot,
+			Border:   config.ClumpBorder,
 		}
 		sortDefinition.Func = func(reads *[]fastq.FastqRead) {
 			_sort.SortReadsClumpOpts(reads, opts)
@@ -175,6 +177,7 @@ func normalizeConfig(config Config) (Config, SortDefinition, error) {
 			MinCount: config.ClumpMinCount,
 			RComp:    config.ClumpRComp,
 			RawPivot: config.ClumpRawPivot,
+			Border:   config.ClumpBorder,
 		}
 	}
 

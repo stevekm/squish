@@ -30,6 +30,7 @@ func main() {
 	clumpMinCount := flag.Int("clumpMinCount", 0, "Clump: ignore pivot k-mers appearing fewer than this many times (0 = disabled)")
 	clumpRComp := flag.Bool("clumpRComp", false, "Clump: reverse-complement reads whose pivot k-mer was on the minus strand")
 	clumpRawPivot := flag.Bool("clumpRawPivot", false, "Clump: use lex-max canonical k-mer as pivot instead of max-hash k-mer")
+	clumpBorder := flag.Int("clumpBorder", 1, "Clump: bases to exclude from each read end during pivot selection (Clumpify default: 1)")
 	quantizeQuality := flag.Bool("quantize", false, "Bin quality scores to 4 Illumina levels after sorting (lossy — reduces quality precision)")
 	tempDirArg := flag.String("tempdir", "tmp", "External bucket temp directory under the output dir")
 	pairedFastqArg := flag.String("paired", "", "Comma- or semicolon-separated companion FASTQ files to reorder using the primary order file")
@@ -60,6 +61,7 @@ func main() {
 		*clumpMinCount,
 		*clumpRComp,
 		*clumpRawPivot,
+		*clumpBorder,
 		*quantizeQuality,
 		*orderFilename,
 		*reportFilename,
@@ -93,6 +95,7 @@ func configFromFlags(
 	clumpMinCount int,
 	clumpRComp bool,
 	clumpRawPivot bool,
+	clumpBorder int,
 	quantizeQuality bool,
 	orderFilename string,
 	reportFilename string,
@@ -183,6 +186,7 @@ func configFromFlags(
 		ClumpMinCount:         clumpMinCount,
 		ClumpRComp:            clumpRComp,
 		ClumpRawPivot:         clumpRawPivot,
+		ClumpBorder:           clumpBorder,
 		QuantizeQuality:       quantizeQuality,
 		TempDir:               tempDir,
 		ProfileDir:            profileDir,
