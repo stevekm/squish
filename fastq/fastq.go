@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	_io "squish/io"
+	_io "squish/fastqio"
 	"strconv"
 	"strings"
 )
@@ -129,20 +129,28 @@ func ReadLineIntoArena(reader _io.InputFileReader, delim byte, arena *FastqArena
 }
 
 func CreateFastqRead(idOffset int, idSize int, reader _io.InputFileReader, delim *byte, i *int, arena *FastqArena) FastqRead {
+	read, err := CreateFastqReadE(idOffset, idSize, reader, delim, i, arena)
+	if err != nil {
+		log.Fatalf("Error creating fastq read: %v\n", err)
+	}
+	return read
+}
+
+func CreateFastqReadE(idOffset int, idSize int, reader _io.InputFileReader, delim *byte, i *int, arena *FastqArena) (FastqRead, error) {
 	// The header line has already been read. Pull the remaining three FASTQ
 	// lines into the same arena so Record() can later return the exact original
 	// four-line record for output.
 	sequenceOffset, sequenceSize, err := ReadLineIntoArena(reader, *delim, arena)
 	if err != nil {
-		log.Fatalf("Error parsing sequence line in fastq read: %v\n", err)
+		return FastqRead{}, fmt.Errorf("parse sequence line in fastq read: %w", err)
 	}
 	plusOffset, plusSize, err := ReadLineIntoArena(reader, *delim, arena)
 	if err != nil {
-		log.Fatalf("Error parsing plus line in fastq read: %v\n", err)
+		return FastqRead{}, fmt.Errorf("parse plus line in fastq read: %w", err)
 	}
 	qualityScoresOffset, qualityScoresSize, err := ReadLineIntoArena(reader, *delim, arena)
 	if err != nil {
-		log.Fatalf("Error parsing qualityScores line in fastq read: %v\n", err)
+		return FastqRead{}, fmt.Errorf("parse qualityScores line in fastq read: %w", err)
 	}
 
 	recordOffset := idOffset
@@ -162,13 +170,17 @@ func CreateFastqRead(idOffset int, idSize int, reader _io.InputFileReader, delim
 		I:                  *i,
 		GCContent:          CalcGCContent(arena.Data[sequenceOffset : sequenceOffset+sequenceSize]),
 	}
-	return read
+	return read, nil
 }
 
 // ReadNextRead streams one FASTQ record from reader into a small per-record
 // arena. The external bucket engine uses this to classify and write records to
 // disk without retaining the rest of the input in memory.
 func ReadNextRead(reader _io.InputFileReader, delim *byte, i *int) (FastqRead, int, error) {
+	return ReadNextReadE(reader, delim, i)
+}
+
+func ReadNextReadE(reader _io.InputFileReader, delim *byte, i *int) (FastqRead, int, error) {
 	arena := &FastqArena{}
 	for {
 		idOffset, idSize, err := ReadLineIntoArena(reader, *delim, arena)
@@ -187,21 +199,41 @@ func ReadNextRead(reader _io.InputFileReader, delim *byte, i *int) (FastqRead, i
 		// CreateFastqRead reads the following sequence, plus, and quality lines
 		// into the same per-record arena.
 		*i = *i + 1
-		read := CreateFastqRead(idOffset, idSize, reader, delim, i, arena)
+		read, err := CreateFastqReadE(idOffset, idSize, reader, delim, i, arena)
+		if err != nil {
+			return FastqRead{}, 0, err
+		}
 		return read, read.RecordSize, nil
 	}
 }
 
 func WriteReads(reads *[]FastqRead, writer _io.OutputFileWriter) {
+	if err := WriteReadsE(reads, writer); err != nil {
+		log.Fatalf("Error writing reads: %v\n", err)
+	}
+}
+
+func WriteReadsE(reads *[]FastqRead, writer _io.OutputFileWriter) error {
 	var n int = 0
 	for _, read := range *reads {
-		writer.Writer.Write(read.Record())
+		if _, err := writer.Writer.Write(read.Record()); err != nil {
+			return fmt.Errorf("write read record: %w", err)
+		}
 		n = n + 1
 	}
 	slog.Debug("wrote reads", "count", n)
+	return nil
 }
 
 func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte) int {
+	totalSize, err := LoadReadsE(readsBuffer, reader, delim)
+	if err != nil {
+		log.Fatalf("Error loading reads: %v\n", err)
+	}
+	return totalSize
+}
+
+func LoadReadsE(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte) (int, error) {
 	// LoadReads is the memory-engine parser: all records share one arena and
 	// the returned FastqRead structs only carry offsets into that buffer.
 	var totalSize int = 0
@@ -214,25 +246,34 @@ func LoadReads(readsBuffer *[]FastqRead, reader _io.InputFileReader, delim *byte
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			log.Fatalf("Error reading fastq header line: %v\n", err)
+			return 0, fmt.Errorf("read fastq header line: %w", err)
 		}
 		// check if its a FASTQ header line
 		line := arena.Data[idOffset : idOffset+idSize]
 		if len(line) > 0 && line[0] == '@' {
 			i = i + 1
-			read := CreateFastqRead(idOffset, idSize, reader, delim, &i, arena)
+			read, err := CreateFastqReadE(idOffset, idSize, reader, delim, &i, arena)
+			if err != nil {
+				return 0, err
+			}
 			totalSize = totalSize + read.RecordSize
 			*readsBuffer = append(*readsBuffer, read)
 		}
 	}
-	return totalSize
+	return totalSize, nil
 }
 
 func SaveOrder(readsBuffer *[]FastqRead, orderFilename string) {
+	if err := SaveOrderE(readsBuffer, orderFilename); err != nil {
+		log.Fatalf("Error saving order: %v\n", err)
+	}
+}
+
+func SaveOrderE(readsBuffer *[]FastqRead, orderFilename string) error {
 	slog.Debug("saving read order", "path", orderFilename, "count", len(*readsBuffer))
 	outputFile, err := os.Create(orderFilename)
 	if err != nil {
-		log.Fatalf("Error creating output file: %v\n", err)
+		return fmt.Errorf("create order file: %w", err)
 	}
 	defer outputFile.Close()
 
@@ -242,9 +283,10 @@ func SaveOrder(readsBuffer *[]FastqRead, orderFilename string) {
 	for _, read := range *readsBuffer {
 		_, err := writer.WriteString(strconv.Itoa(read.I) + "\n")
 		if err != nil {
-			log.Fatalf("Error writing to file: %v\n", err)
+			return fmt.Errorf("write order row: %w", err)
 		}
 	}
+	return nil
 }
 
 func LoadOrder(orderFilename string) ([]int, error) {
@@ -289,13 +331,16 @@ func NormalizedReadID(id []byte) string {
 }
 
 func LoadNormalizedReadNames(inputFilepath string, delim byte) ([]string, error) {
-	reader := _io.GetReader(inputFilepath)
+	reader, err := _io.OpenReader(inputFilepath)
+	if err != nil {
+		return nil, err
+	}
 	defer reader.Close()
 
 	names := []string{}
 	readIndex := 0
 	for {
-		read, _, err := ReadNextRead(reader, &delim, &readIndex)
+		read, _, err := ReadNextReadE(reader, &delim, &readIndex)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -320,7 +365,10 @@ func ReorderReadsByOrder(
 	expectedReads int,
 	referenceNames []string,
 ) (ReorderStats, error) {
-	reader := _io.GetReader(inputFilepath)
+	reader, err := _io.OpenReader(inputFilepath)
+	if err != nil {
+		return ReorderStats{}, err
+	}
 	defer reader.Close()
 
 	tempDir, err := os.MkdirTemp(filepath.Dir(outputFilepath), ".reorder-*")
@@ -342,7 +390,7 @@ func ReorderReadsByOrder(
 	totalBytes := 0
 	readIndex := 0
 	for {
-		read, readSize, err := ReadNextRead(reader, &delim, &readIndex)
+		read, readSize, err := ReadNextReadE(reader, &delim, &readIndex)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -398,7 +446,10 @@ func ReorderReadsByOrder(
 	defer tempRecordsReader.Close()
 
 	seen := make([]bool, len(index))
-	writer := _io.GetWriter(outputFilepath)
+	writer, err := _io.OpenWriter(outputFilepath)
+	if err != nil {
+		return ReorderStats{}, err
+	}
 	defer writer.Close()
 
 	scanner := bufio.NewScanner(orderFile)

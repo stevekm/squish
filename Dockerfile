@@ -18,14 +18,16 @@ RUN go mod download
 # https://stackoverflow.com/questions/60450479/using-arg-and-env-in-dockerfile
 ARG Version=foo-docker-version
 
-# Copy the full Go program, including local packages imported by main.go.
-COPY main.go ./
+# Copy the full Go program and CLI package.
+COPY squish.go ./
+COPY squish_test.go ./
+COPY cmd ./cmd
 COPY fastq ./fastq
-COPY io ./io
+COPY fastqio ./fastqio
 COPY sort ./sort
 
 RUN go test ./...
-RUN go build -trimpath -ldflags="-X 'main.Version=$Version'" -o /squish ./main.go
+RUN go build -trimpath -ldflags="-X 'squish.Version=$Version'" -o /squish ./cmd/squish
 
 ##
 ## Deploy

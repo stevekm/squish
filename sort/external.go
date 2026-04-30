@@ -14,7 +14,7 @@ import (
 
 	"code.cloudfoundry.org/bytefmt"
 	fastq "squish/fastq"
-	_io "squish/io"
+	_io "squish/fastqio"
 )
 
 // ExternalBucketConfig contains the file paths and parsing settings needed by
@@ -108,7 +108,10 @@ func RunExternalBucketSort(config ExternalBucketConfig, sorter SortStrategy, buc
 // writeBuckets is the streaming phase. It reads one FASTQ record at a time,
 // computes the bucket ID, and appends the raw record to that bucket's temp file.
 func writeBuckets(config ExternalBucketConfig, bucketer BucketStrategy) (map[int]string, map[int]string, map[int]int64, int, int, error) {
-	reader := _io.GetReader(config.InputFilepath)
+	reader, err := _io.OpenReader(config.InputFilepath)
+	if err != nil {
+		return nil, nil, nil, 0, 0, err
+	}
 	defer reader.Close()
 
 	writers := map[int]*bucketWriter{}
@@ -128,7 +131,7 @@ func writeBuckets(config ExternalBucketConfig, bucketer BucketStrategy) (map[int
 	for {
 		// ReadNextRead returns a small one-record arena, so this loop does not
 		// retain the full input in memory during bucketing.
-		read, readSize, err := fastq.ReadNextRead(reader, &config.RecordDelim, &readIndex)
+		read, readSize, err := fastq.ReadNextReadE(reader, &config.RecordDelim, &readIndex)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -235,7 +238,10 @@ func sortBucketsToOutput(
 	bucketOrderPaths map[int]string,
 	bucketSizes map[int]int64,
 ) error {
-	outputWriter := _io.GetWriter(config.OutputFilepath)
+	outputWriter, err := _io.OpenWriter(config.OutputFilepath)
+	if err != nil {
+		return err
+	}
 	defer outputWriter.Close()
 
 	orderFile, err := os.Create(config.OrderFilepath)
@@ -299,11 +305,16 @@ func sortBucketsToOutput(
 // loadBucket reloads one temporary FASTQ bucket into memory and restores the
 // original global read indexes from the sidecar order file.
 func loadBucket(bucketPath string, orderPath string, delim byte) ([]fastq.FastqRead, error) {
-	reader := _io.GetReader(bucketPath)
+	reader, err := _io.OpenReader(bucketPath)
+	if err != nil {
+		return nil, err
+	}
 	defer reader.Close()
 
 	reads := []fastq.FastqRead{}
-	fastq.LoadReads(&reads, reader, &delim)
+	if _, err := fastq.LoadReadsE(&reads, reader, &delim); err != nil {
+		return nil, err
+	}
 	if err := restoreOriginalOrder(reads, orderPath); err != nil {
 		return nil, err
 	}

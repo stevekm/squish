@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	_io "squish/io"
+	_io "squish/fastqio"
 )
 
 func TestLoadReadsStoresRecordsInArena(t *testing.T) {

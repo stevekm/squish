@@ -12,11 +12,13 @@ test:
 	GOCACHE="$$tmp_cache" go test -count=1 ./...
 .PHONY:test
 
-SRC:=main.go
+CMD:=./cmd/squish
 BIN:=squish
 FASTQGZ:=data/test1.fastq.gz
 test-run:
-	go run "$(SRC)" "$(FASTQGZ)" "output.gz"
+	tmp_cache="$$(mktemp -d)" ; \
+	trap 'rm -rf "$$tmp_cache"' EXIT ; \
+	GOCACHE="$$tmp_cache" go run "$(CMD)" "$(FASTQGZ)" "output.gz"
 
 # brew install graphviz
 PROF:=mem.prof
@@ -31,17 +33,21 @@ pdf:
 GIT_TAG:=$(shell git describe --tags)
 
 build:
-	go build -trimpath -ldflags="-X 'main.Version=$(GIT_TAG)'" -o ./$(BIN) ./$(SRC)
+	tmp_cache="$$(mktemp -d)" ; \
+	trap 'rm -rf "$$tmp_cache"' EXIT ; \
+	GOCACHE="$$tmp_cache" go build -trimpath -ldflags="-X 'squish.Version=$(GIT_TAG)'" -o ./$(BIN) $(CMD)
 .PHONY:build
 
 build-all:
 	mkdir -p build ; \
+	tmp_cache="$$(mktemp -d)" ; \
+	trap 'rm -rf "$$tmp_cache"' EXIT ; \
 	for os in darwin linux windows; do \
 	for arch in amd64 arm64; do \
 	output="build/$(BIN)-v$(GIT_TAG)-$$os-$$arch" ; \
 	if [ "$${os}" == "windows" ]; then output="$${output}.exe"; fi ; \
 	echo "building: $$output" ; \
-	GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-X 'main.Version=$(GIT_TAG)'" -o "$${output}" $(SRC) ; \
+	GOOS=$$os GOARCH=$$arch GOCACHE="$$tmp_cache" go build -trimpath -ldflags="-X 'squish.Version=$(GIT_TAG)'" -o "$${output}" $(CMD) ; \
 	done ; \
 	done
 

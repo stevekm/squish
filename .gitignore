@@ -1,6 +1,8 @@
 data.gz
 data.txt
 squish
+!cmd/squish/
+!cmd/squish/main.go
 build
 *.pprof
 *.prof

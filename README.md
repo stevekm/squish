@@ -33,7 +33,7 @@ make build
 or:
 
 ```bash
-go build -trimpath -o ./squish ./main.go
+go build -trimpath -o ./squish ./cmd/squish
 ```
 
 Run tests:
@@ -41,6 +41,34 @@ Run tests:
 ```bash
 make test
 ```
+
+## Go Package
+
+The reusable implementation lives in the root Go package:
+
+```go
+import "squish"
+```
+
+External Go code can call `squish.Run` directly instead of shelling out to the
+CLI:
+
+```go
+result, err := squish.Run(ctx, squish.Config{
+    SortMethod:        "clump",
+    SortEngine:        "external",
+    InputFilepath:     "data/sample_R1.fastq.gz",
+    OutputFilenameArg: "sample_R1.clump.fastq.gz",
+    OutputDir:         "output",
+    BucketStrategy:    "auto",
+    BucketCount:       512,
+    ClumpKmerLen:      16,
+    CheckPairs:        true,
+})
+```
+
+The CLI in `cmd/squish` is intentionally thin: it parses flags, builds a
+`squish.Config`, calls `squish.Run`, and handles process exit codes.
 
 ## CLI Usage
 

@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	fastq "squish/fastq"
-	_io "squish/io"
+	_io "squish/fastqio"
 	"testing"
 )
 

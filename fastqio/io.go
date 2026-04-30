@@ -1,4 +1,4 @@
-package io
+package fastqio
 
 // package for holding the file IO types and methods
 
@@ -6,6 +6,7 @@ import (
 	"os"
 	// "compress/gzip"
 	"bufio"
+	"fmt"
 	gzip "github.com/klauspost/pgzip"
 	"log"
 	"strings"
@@ -37,6 +38,14 @@ func (w *OutputFileWriter) Close() {
 }
 
 func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.File, *os.File)
+	reader, err := OpenReader(inputFilepath)
+	if err != nil {
+		log.Fatalf("Error opening file: %v\n", err)
+	}
+	return reader
+}
+
+func OpenReader(inputFilepath string) (InputFileReader, error) {
 	// GetReader hides whether the input is plain FASTQ or gzip-compressed.
 	// Callers always receive a buffered reader and only need to defer Close().
 	var reader *bufio.Reader
@@ -46,14 +55,15 @@ func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.Fil
 
 	file, err := os.Open(inputFilepath)
 	if err != nil {
-		log.Fatalf("Error opening file: %v\n", err)
+		return InputFileReader{}, fmt.Errorf("open input file: %w", err)
 	}
 
 	if strings.HasSuffix(inputFilepath, ".gz") {
 		log.Printf("Opening .gz file %v\n", inputFilepath)
 		gz, err := gzip.NewReader(file)
 		if err != nil {
-			log.Fatalf("Error opening file: %v\n", err)
+			file.Close()
+			return InputFileReader{}, fmt.Errorf("open gzip reader: %w", err)
 		}
 
 		reader = bufio.NewReaderSize(gz, bufferSize)
@@ -62,20 +72,29 @@ func GetReader(inputFilepath string) InputFileReader { //(*bufio.Reader, *os.Fil
 		reader = bufio.NewReaderSize(file, bufferSize)
 	}
 
-	return InputFileReader{reader, file, gzFile}
+	return InputFileReader{reader, file, gzFile}, nil
 }
 
 func GetWriter(outputFilepath string) OutputFileWriter { //(*os.File, *gzip.Writer)
+	writer, err := OpenWriter(outputFilepath)
+	if err != nil {
+		log.Fatalf("Error creating output writer: %v\n", err)
+	}
+	return writer
+}
+
+func OpenWriter(outputFilepath string) (OutputFileWriter, error) {
 	// All squish outputs are gzip-compressed FASTQ files. The caller writes raw
 	// FASTQ records to Writer and Close flushes the gzip stream and file.
 	outputFile, err := os.Create(outputFilepath)
 	if err != nil {
-		log.Fatalf("Error creating output file: %v\n", err)
+		return OutputFileWriter{}, fmt.Errorf("create output file: %w", err)
 	}
 
 	writer, err := gzip.NewWriterLevel(outputFile, gzip.BestCompression)
 	if err != nil {
-		log.Fatalf("Error creating output writer: %v\n", err)
+		outputFile.Close()
+		return OutputFileWriter{}, fmt.Errorf("create gzip writer: %w", err)
 	}
-	return OutputFileWriter{outputFile, writer}
+	return OutputFileWriter{outputFile, writer}, nil
 }

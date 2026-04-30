@@ -12,6 +12,8 @@ output-nextflow*/
 build/
 output/
 squish
+!cmd/squish/
+!cmd/squish/main.go
 *.prof
 *.pprof
 *.pdf
