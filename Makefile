@@ -66,7 +66,7 @@ OUTDIR:=output
 ENGINE:=memory
 BUCKET:=auto
 BUCKETS:=512
-CLUMPK:=16
+CLUMPK:=31
 $(OUTDIR):
 	mkdir -p "$(OUTDIR)"
 test-run-all: build $(BIN) $(OUTDIR)
@@ -89,7 +89,9 @@ nextflow-test-run-all-external:
 # docker build -t stevekm/squish:latest .
 DOCKER_TAG:=stevekm/squish:$(GIT_TAG)
 docker-build:
-	docker build --build-arg "Version=$(GIT_TAG)" -t $(DOCKER_TAG) .
+	docker build \
+	  --build-arg "Version=$(GIT_TAG)" \
+	  -t $(DOCKER_TAG) .
 
 # docker push stevekm/squish:latest
 docker-push:

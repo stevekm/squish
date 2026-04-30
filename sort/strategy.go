@@ -77,13 +77,27 @@ type ClumpSort struct {
 	// K controls the minimizer length used to group reads. A zero value falls
 	// back to DefaultClumpKmerLen so older call sites remain valid.
 	K int
+	// MinCount, when > 1, filters out pivot k-mers that appear fewer than
+	// MinCount times across the reads being sorted. Singleton k-mers are
+	// usually sequencing errors; excluding them avoids tiny isolated clumps
+	// and concentrates reads around confirmed genomic positions.
+	MinCount int
+	// RComp, when true, reverse-complements reads whose pivot k-mer was chosen
+	// from the minus strand. This normalises orientation within each clump so
+	// consecutive sequence lines are more byte-similar, increasing LZ77 density.
+	RComp bool
+	// RawPivot, when true, selects the lex-maximum canonical k-mer instead of
+	// the max-hash k-mer. This clusters reads by nucleotide composition (GC
+	// content) rather than by hash, which can slightly improve compression for
+	// datasets with strong GC bias.
+	RawPivot bool
 }
 
 func (ClumpSort) Name() string { return "clump" }
 
 // Less exists only to satisfy SortStrategy. ClumpSort cannot implement a
 // correct O(1) comparison without precomputed keys, so all sort paths bypass
-// this method: the memory engine calls SortReadsClumpK directly, and the
+// this method: the memory engine calls SortReadsClumpOpts directly, and the
 // external engine type-asserts to Sort(). The panic catches any future code
 // that accidentally routes clump through a generic Less-based sort loop,
 // which would silently recompute the minimizer on every comparison.
@@ -92,7 +106,12 @@ func (s ClumpSort) Less(a fastq.FastqRead, b fastq.FastqRead) bool {
 }
 
 func (s ClumpSort) Sort(reads []fastq.FastqRead) {
-	SortReadsClumpK(&reads, s.k())
+	SortReadsClumpOpts(&reads, ClumpSortOptions{
+		K:        s.k(),
+		MinCount: s.MinCount,
+		RComp:    s.RComp,
+		RawPivot: s.RawPivot,
+	})
 }
 
 func (s ClumpSort) k() int {

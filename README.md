@@ -62,7 +62,7 @@ result, err := squish.Run(ctx, squish.Config{
     OutputDir:         "output",
     BucketStrategy:    "auto",
     BucketCount:       512,
-    ClumpKmerLen:      16,
+    ClumpKmerLen:      31,
     CheckPairs:        true,
 })
 ```
@@ -103,7 +103,7 @@ External sorting is the default:
   -m clump \
   -bucket auto \
   -buckets 512 \
-  -clumpK 16 \
+  -clumpK 31 \
   -outdir output \
   data/sample_R1.fastq.gz \
   sample_R1.clump.fastq.gz
@@ -122,16 +122,21 @@ Use `-m` to choose the method:
 - `alpha`: bytewise sequence sort.
 - `gc`: sort by GC content.
 - `qual`: sort by quality string.
-- `clump`: groups reads by canonical minimizer k-mer for compression-oriented
-  clustering.
+- `clump`: groups reads by a pivot k-mer for compression-oriented clustering.
+  For each read, every k-mer window is canonicalized (min of forward and
+  reverse complement) and hashed with FNV-1a. The window with the highest
+  hash value becomes the sort key. Reads sharing that k-mer land in the same
+  clump. Using the max-hash pivot (rather than the lex-minimum) avoids
+  over-grouping on low-complexity k-mers such as poly-A runs.
 
-For clump sorting, tune minimizer size with:
+Tune the k-mer length with `-clumpK`. Longer k-mers are more specific and
+give tighter clumps:
 
 ```bash
 -clumpK 31
 ```
 
-The default is `16`.
+The default is `31`.
 
 ## External Buckets
 
@@ -219,7 +224,7 @@ Example report fields:
 {
   "sort_method": "clump",
   "sort_engine": "external",
-  "clump_kmer_length": 16,
+  "clump_kmer_length": 31,
   "reads": 1000000,
   "output": {
     "path": "/absolute/path/output/sample_R1.clump.fastq.gz",

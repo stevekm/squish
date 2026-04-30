@@ -1,6 +1,3 @@
-##
-## Build
-##
 # NOTE: the platform is pinned to linux/amd64 because builds often happen on
 # Apple Silicon, but the resulting image needs to run in x86 Linux batch/HPC
 # environments.
@@ -14,11 +11,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # overwrite this at build time
-# put this here so previous layers do not get invalidated
-# https://stackoverflow.com/questions/60450479/using-arg-and-env-in-dockerfile
 ARG Version=foo-docker-version
 
-# Copy the root library package, tests, CLI package, and implementation packages.
 COPY *.go ./
 COPY cmd ./cmd
 COPY fastq ./fastq
@@ -31,7 +25,6 @@ RUN go build -trimpath -ldflags="-X 'squish.Version=$Version'" -o /squish ./cmd/
 ##
 ## Deploy
 ##
-
 # NOTE: had issues with alpine on AWS Batch, so use Ubuntu for runtime.
 FROM --platform=$TARGETPLATFORM ubuntu:22.04
 

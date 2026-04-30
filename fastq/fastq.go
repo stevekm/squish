@@ -23,6 +23,11 @@ import (
 // an offset and size into the shared arena buffer. That keeps the read structs
 // cheap to copy during sorting while preserving fast access to the original
 // FASTQ record bytes.
+//
+// OverrideSeq and OverrideQual, when non-nil, replace the arena sequence and
+// quality bytes in all accessors and in Record(). Sort post-processing (rcomp
+// flipping, quality quantization) sets these fields rather than modifying the
+// shared arena.
 type FastqRead struct {
 	Arena              *FastqArena
 	RecordOffset       int
@@ -37,6 +42,8 @@ type FastqRead struct {
 	QualityScoreSize   int
 	I                  int // index order in the original file
 	GCContent          float64
+	OverrideSeq        []byte // non-nil replaces arena sequence (e.g. rcomp flip)
+	OverrideQual       []byte // non-nil replaces arena quality (e.g. rcomp flip, quantize)
 }
 
 // FastqArena owns the raw FASTQ bytes referenced by one or more FastqRead
@@ -70,6 +77,9 @@ func (read FastqRead) Id() []byte {
 }
 
 func (read FastqRead) Sequence() []byte {
+	if read.OverrideSeq != nil {
+		return read.OverrideSeq
+	}
 	return bytes.TrimRight(read.Arena.Data[read.SequenceOffset:read.SequenceOffset+read.SequenceSize], "\r\n")
 }
 
@@ -78,11 +88,31 @@ func (read FastqRead) Plus() []byte {
 }
 
 func (read FastqRead) QualityScores() []byte {
+	if read.OverrideQual != nil {
+		return read.OverrideQual
+	}
 	return bytes.TrimRight(read.Arena.Data[read.QualityScoreOffset:read.QualityScoreOffset+read.QualityScoreSize], "\r\n")
 }
 
 func (read FastqRead) Record() []byte {
-	return read.Arena.Data[read.RecordOffset : read.RecordOffset+read.RecordSize]
+	if read.OverrideSeq == nil && read.OverrideQual == nil {
+		// Fast path: no post-processing overrides, return raw arena bytes.
+		return read.Arena.Data[read.RecordOffset : read.RecordOffset+read.RecordSize]
+	}
+	// One or both fields overridden — assemble a new 4-line record.
+	// id and plus already include their trailing newline from the arena.
+	id := read.Arena.Data[read.IdOffset : read.IdOffset+read.IdSize]
+	plus := read.Arena.Data[read.PlusOffset : read.PlusOffset+read.PlusSize]
+	seq := read.Sequence()
+	qual := read.QualityScores()
+	buf := make([]byte, 0, len(id)+len(seq)+1+len(plus)+len(qual)+1)
+	buf = append(buf, id...)
+	buf = append(buf, seq...)
+	buf = append(buf, '\n')
+	buf = append(buf, plus...)
+	buf = append(buf, qual...)
+	buf = append(buf, '\n')
+	return buf
 }
 
 func CalcGCContent(sequence []byte) float64 {

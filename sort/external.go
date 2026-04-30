@@ -21,11 +21,12 @@ import (
 // ExternalBucketConfig contains the file paths and parsing settings needed by
 // the file-backed sorting engine.
 type ExternalBucketConfig struct {
-	InputFilepath  string
-	OutputFilepath string
-	OrderFilepath  string
-	TempDir        string
-	RecordDelim    byte
+	InputFilepath   string
+	OutputFilepath  string
+	OrderFilepath   string
+	TempDir         string
+	RecordDelim     byte
+	QuantizeQuality bool // bin quality scores to 4 levels after sorting each bucket (lossy)
 }
 
 type ExternalBucketStats struct {
@@ -307,6 +308,9 @@ func sortBucketsToOutput(
 			go_sort.Slice(reads, func(i, j int) bool {
 				return sorter.Less(reads[i], reads[j])
 			})
+		}
+		if config.QuantizeQuality {
+			QuantizeReads(reads)
 		}
 
 		// Ordered bucket strategies rely on this append order: bucket 0 first,

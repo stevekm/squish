@@ -35,6 +35,10 @@ func RunSort(config Config, sortDefinition SortDefinition) (RunStats, error) {
 	sortDefinition.Func(&reads)
 	slog.Debug("reads after sorting", "count", len(reads))
 
+	if config.QuantizeQuality {
+		_sort.QuantizeReads(reads)
+	}
+
 	slog.Debug("writing to output file", "path", config.OutputFilepath)
 	if err := fastq.WriteReadsE(&reads, writer); err != nil {
 		return RunStats{}, err
@@ -91,11 +95,12 @@ func RunPairedReorders(config Config, expectedReads int) ([]PairedRunStats, erro
 func RunExternalSort(config Config, sortDefinition SortDefinition) (RunStats, error) {
 	tempDir := filepath.Join(config.TempDir, sortDefinition.CLIArg)
 	sortConfig := _sort.ExternalBucketConfig{
-		InputFilepath:  config.InputFilepath,
-		OutputFilepath: config.OutputFilepath,
-		OrderFilepath:  config.OrderFilename,
-		TempDir:        tempDir,
-		RecordDelim:    config.RecordDelim,
+		InputFilepath:   config.InputFilepath,
+		OutputFilepath:  config.OutputFilepath,
+		OrderFilepath:   config.OrderFilename,
+		TempDir:         tempDir,
+		RecordDelim:     config.RecordDelim,
+		QuantizeQuality: config.QuantizeQuality,
 	}
 	bucketer, err := GetBucketStrategy(config, sortDefinition)
 	if err != nil {

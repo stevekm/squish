@@ -27,6 +27,10 @@ func main() {
 	bucketStrategy := flag.String("bucket", squish.DefaultBucketStrategy, "External bucket strategy. Options: auto, sequence-prefix, quality-prefix, gc-range, hash, clump-minimizer")
 	bucketCount := flag.Int("buckets", squish.DefaultExternalBucketCount, "External bucket count for bucket strategies that use a configurable count")
 	clumpKmerLen := flag.Int("clumpK", squish.DefaultClumpKmerLen, "K-mer length used by the clump minimizer")
+	clumpMinCount := flag.Int("clumpMinCount", 0, "Clump: ignore pivot k-mers appearing fewer than this many times (0 = disabled)")
+	clumpRComp := flag.Bool("clumpRComp", false, "Clump: reverse-complement reads whose pivot k-mer was on the minus strand")
+	clumpRawPivot := flag.Bool("clumpRawPivot", false, "Clump: use lex-max canonical k-mer as pivot instead of max-hash k-mer")
+	quantizeQuality := flag.Bool("quantize", false, "Bin quality scores to 4 Illumina levels after sorting (lossy — reduces quality precision)")
 	tempDirArg := flag.String("tempdir", "tmp", "External bucket temp directory under the output dir")
 	pairedFastqArg := flag.String("paired", "", "Comma- or semicolon-separated companion FASTQ files to reorder using the primary order file")
 	pairedOutArg := flag.String("pairedOut", "", "Comma- or semicolon-separated output filenames for paired FASTQs under the output dir")
@@ -53,6 +57,10 @@ func main() {
 		*bucketStrategy,
 		*bucketCount,
 		*clumpKmerLen,
+		*clumpMinCount,
+		*clumpRComp,
+		*clumpRawPivot,
+		*quantizeQuality,
 		*orderFilename,
 		*reportFilename,
 		*manifestFilename,
@@ -82,6 +90,10 @@ func configFromFlags(
 	bucketStrategy string,
 	bucketCount int,
 	clumpKmerLen int,
+	clumpMinCount int,
+	clumpRComp bool,
+	clumpRawPivot bool,
+	quantizeQuality bool,
 	orderFilename string,
 	reportFilename string,
 	manifestFilename string,
@@ -168,6 +180,10 @@ func configFromFlags(
 		BucketStrategy:        bucketStrategy,
 		BucketCount:           bucketCount,
 		ClumpKmerLen:          clumpKmerLen,
+		ClumpMinCount:         clumpMinCount,
+		ClumpRComp:            clumpRComp,
+		ClumpRawPivot:         clumpRawPivot,
+		QuantizeQuality:       quantizeQuality,
 		TempDir:               tempDir,
 		ProfileDir:            profileDir,
 		CPUProfilePath:        cpuProfilePath,

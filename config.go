@@ -86,6 +86,10 @@ type Config struct {
 	BucketStrategy        string
 	BucketCount           int
 	ClumpKmerLen          int
+	ClumpMinCount         int  // filter pivot k-mers appearing fewer than this many times (0 = disabled)
+	ClumpRComp            bool // reverse-complement minus-strand reads after clump sort
+	ClumpRawPivot         bool // use lex-max canonical k-mer instead of max-hash pivot
+	QuantizeQuality       bool // bin quality scores to 4 Illumina levels after sorting (lossy)
 	TempDir               string
 	ProfileDir            string
 	CPUProfilePath        string
@@ -157,10 +161,21 @@ func normalizeConfig(config Config) (Config, SortDefinition, error) {
 		return Config{}, SortDefinition{}, fmt.Errorf("clumpK must be >= 1, got %d", config.ClumpKmerLen)
 	}
 	if sortDefinition.CLIArg == "clump" {
-		sortDefinition.Func = func(reads *[]fastq.FastqRead) {
-			_sort.SortReadsClumpK(reads, config.ClumpKmerLen)
+		opts := _sort.ClumpSortOptions{
+			K:        config.ClumpKmerLen,
+			MinCount: config.ClumpMinCount,
+			RComp:    config.ClumpRComp,
+			RawPivot: config.ClumpRawPivot,
 		}
-		sortDefinition.Strategy = _sort.ClumpSort{K: config.ClumpKmerLen}
+		sortDefinition.Func = func(reads *[]fastq.FastqRead) {
+			_sort.SortReadsClumpOpts(reads, opts)
+		}
+		sortDefinition.Strategy = _sort.ClumpSort{
+			K:        config.ClumpKmerLen,
+			MinCount: config.ClumpMinCount,
+			RComp:    config.ClumpRComp,
+			RawPivot: config.ClumpRawPivot,
+		}
 	}
 
 	if config.OutputFilenameArg == "" && config.OutputFilepath != "" {
