@@ -1,0 +1,1 @@
+run the `make build` recipe in the project root dir to build the local copy of `squish` and then symlink it to here so that it can be used in the bundled Nextflow pipeline (`main.nf`) without needing a Docker container
