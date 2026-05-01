@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_io "squish/fastqio"
@@ -114,6 +115,56 @@ func TestReorderReadsByOrderRejectsReadNameMismatch(t *testing.T) {
 		t.Fatalf("expected read name mismatch error")
 	}
 }
+
+func loadReadFromString(t *testing.T, record string) FastqRead {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "r.fastq")
+	if err := os.WriteFile(path, []byte(record), 0644); err != nil {
+		t.Fatalf("write test fastq: %v", err)
+	}
+	reader := _io.GetReader(path)
+	defer reader.Close()
+	delim := byte('\n')
+	reads := []FastqRead{}
+	LoadReads(&reads, reader, &delim)
+	if len(reads) != 1 {
+		t.Fatalf("expected 1 read, got %d", len(reads))
+	}
+	return reads[0]
+}
+
+func TestFastqReadOverrideSeq(t *testing.T) {
+	read := loadReadFromString(t, "@r\nACGT\n+\nIIII\n")
+	read.OverrideSeq = []byte("TTTT")
+
+	if got := string(read.Sequence()); got != "TTTT" {
+		t.Fatalf("Sequence() = %q, want TTTT", got)
+	}
+	rec := string(read.Record())
+	if !strings.Contains(rec, "TTTT") {
+		t.Fatalf("Record() = %q should contain override sequence TTTT", rec)
+	}
+	if strings.Contains(rec, "ACGT") {
+		t.Fatalf("Record() = %q should not contain original sequence ACGT", rec)
+	}
+}
+
+func TestFastqReadOverrideQual(t *testing.T) {
+	read := loadReadFromString(t, "@r\nACGT\n+\nIIII\n")
+	read.OverrideQual = []byte("!!!!")
+
+	if got := string(read.QualityScores()); got != "!!!!" {
+		t.Fatalf("QualityScores() = %q, want !!!!", got)
+	}
+	rec := string(read.Record())
+	if !strings.Contains(rec, "!!!!") {
+		t.Fatalf("Record() = %q should contain override quality !!!!", rec)
+	}
+	if strings.Contains(rec, "IIII") {
+		t.Fatalf("Record() = %q should not contain original quality IIII", rec)
+	}
+}
+
 
 func readGzipFile(t *testing.T, path string) string {
 	t.Helper()

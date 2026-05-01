@@ -82,6 +82,125 @@ func TestSortReadsClumpExample(t *testing.T) {
 	assertExternalSortOutput(t, input, ClumpSort{K: 3}, NewClumpBuckets(1, 3), want)
 }
 
+func TestSortReadsAlphaTieBreak(t *testing.T) {
+	// Identical sequences: original input order should be preserved via I tiebreak.
+	input := "" +
+		"@first\nAAAA\n+\nIIII\n" +
+		"@second\nAAAA\n+\n!!!!\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsSequence(&reads)
+	want := []string{
+		"@first\nAAAA\n+\nIIII\n",
+		"@second\nAAAA\n+\n!!!!\n",
+	}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsGCBoundaries(t *testing.T) {
+	// 0% GC < 50% GC < 100% GC.
+	input := "" +
+		"@full_gc\nGGCC\n+\nIIII\n" +
+		"@no_gc\nAAAA\n+\nIIII\n" +
+		"@half_gc\nACGT\n+\nIIII\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsGC(&reads)
+	want := []string{
+		"@no_gc\nAAAA\n+\nIIII\n",
+		"@half_gc\nACGT\n+\nIIII\n",
+		"@full_gc\nGGCC\n+\nIIII\n",
+	}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsGCTieBreak(t *testing.T) {
+	// Identical GC content: original input order should be preserved.
+	input := "" +
+		"@first\nACGT\n+\nIIII\n" +
+		"@second\nACGT\n+\n!!!!\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsGC(&reads)
+	want := []string{
+		"@first\nACGT\n+\nIIII\n",
+		"@second\nACGT\n+\n!!!!\n",
+	}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsQualTieBreak(t *testing.T) {
+	// Identical quality strings: original input order should be preserved.
+	input := "" +
+		"@first\nAAAA\n+\nIIII\n" +
+		"@second\nCCCC\n+\nIIII\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsQual(&reads)
+	want := []string{
+		"@first\nAAAA\n+\nIIII\n",
+		"@second\nCCCC\n+\nIIII\n",
+	}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsClumpRComp(t *testing.T) {
+	// "TTTTTT" k=2: every k-mer is TT whose canonical form is AA (RC, A < T).
+	// With RComp=true the read should be reverse-complemented in the output.
+	// Quality "FEDCBA" reversed becomes "ABCDEF".
+	input := "@rc_read\nTTTTTT\n+\nFEDCBA\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsClumpOpts(&reads, ClumpSortOptions{K: 2, RComp: true})
+	want := []string{"@rc_read\nAAAAAA\n+\nABCDEF\n"}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsClumpRCompDisabled(t *testing.T) {
+	// Same read as above but RComp=false: output should be unchanged.
+	input := "@rc_read\nTTTTTT\n+\nFEDCBA\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsClumpOpts(&reads, ClumpSortOptions{K: 2, RComp: false})
+	want := []string{"@rc_read\nTTTTTT\n+\nFEDCBA\n"}
+	assertRecords(t, reads, want)
+}
+
+func TestSortReadsClumpMinCountExcludesSingletons(t *testing.T) {
+	// With an impossibly high MinCount no k-mer qualifies → all reads get a nil
+	// pivot key. Nil-key reads tiebreak by sequence bytes, so AAAAAA < TTTTTT.
+	input := "" +
+		"@read2\nTTTTTT\n+\nIIIIII\n" +
+		"@read1\nAAAAAA\n+\nIIIIII\n"
+	reads := loadReadsFromString(t, input)
+	SortReadsClumpOpts(&reads, ClumpSortOptions{K: 3, MinCount: 999999})
+	want := []string{
+		"@read1\nAAAAAA\n+\nIIIIII\n",
+		"@read2\nTTTTTT\n+\nIIIIII\n",
+	}
+	assertRecords(t, reads, want)
+}
+
+func TestQuantizeReadsAllLevels(t *testing.T) {
+	// Each quality byte maps to a different Phred bin (Phred+33 encoding):
+	//   '!' = Q0  (score  0) <  6 → Q2  '#'
+	//   '/' = Q14 (score 14) < 15 → Q11 ','
+	//   '9' = Q24 (score 24) < 27 → Q25 ':'
+	//   'I' = Q40 (score 40) >= 27 → Q37 'F'
+	input := "@r\nACGT\n+\n!/9I\n"
+	reads := loadReadsFromString(t, input)
+	QuantizeReads(reads)
+	if got := string(reads[0].QualityScores()); got != "#,:F" {
+		t.Fatalf("quantized quality = %q, want %q", got, "#,:F")
+	}
+}
+
+func TestQuantizeReadsRecord(t *testing.T) {
+	// QuantizeReads sets OverrideQual so Record() emits the binned quality.
+	// 'I' = Q40 ≥ 27 → 'F'; all four positions become 'F'.
+	input := "@r\nACGT\n+\nIIII\n"
+	reads := loadReadsFromString(t, input)
+	QuantizeReads(reads)
+	want := "@r\nACGT\n+\nFFFF\n"
+	if got := string(reads[0].Record()); got != want {
+		t.Fatalf("Record() after quantize = %q, want %q", got, want)
+	}
+}
+
 func loadReadsFromString(t *testing.T, input string) []fastq.FastqRead {
 	t.Helper()
 
