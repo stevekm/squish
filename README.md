@@ -27,6 +27,12 @@ often larger than available RAM.
 
 ## Installation
 
+Download a pre-compiled release binary from:
+
+- https://github.com/stevekm/squish/releases
+
+### Build
+
 Build locally with Go:
 
 ```bash
@@ -36,7 +42,7 @@ make build
 or:
 
 ```bash
-go build -trimpath -o ./squish ./cmd/squish
+go build ./squish ./cmd/squish
 ```
 
 Run tests:
