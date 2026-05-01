@@ -119,6 +119,39 @@ download_s3 \
     "s3://ngi-igenomes/test-data/rnaseq/SRX1603629_T1_2.fastq.gz" \
     "SRX1603629_T1_2.fastq.gz"
 
+download_s3 \
+"s3://ngi-igenomes/test-data/rnaseq/SRX1603630_T1_1.fastq.gz" \
+"SRX1603630_T1_1.fastq.gz"
+
+download_s3 \
+"s3://ngi-igenomes/test-data/rnaseq/SRX1603630_T1_2.fastq.gz" \
+SRX1603630_T1_2.fastq.gz \
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX1603392_T1_1.fastq.gz \
+SRX1603392_T1_1.fastq.gz
+
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX1603392_T1_2.fastq.gz \
+SRX1603392_T1_2.fastq.gz
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX2370490_T1_1.fastq.gz \
+SRX2370490_T1_1.fastq.gz
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX2370490_T1_2.fastq.gz \
+SRX2370490_T1_2.fastq.gz
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX2370468_T1_1.fastq.gz \
+SRX2370468_T1_1.fastq.gz
+
+download_s3 \
+s3://ngi-igenomes/test-data/rnaseq/SRX2370468_T1_2.fastq.gz \
+SRX2370468_T1_2.fastq.gz
+
 # Keep the decompressed read 1 FASTQ because the subset files below were made
 # with head -n from the uncompressed file.
 if [[ ! -s "SRX1603629_T1_1.fastq" ]]; then
