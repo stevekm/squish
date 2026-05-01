@@ -2,6 +2,9 @@
 
 nextflow.enable.dsl = 2
 
+// Workflow to benchmark and demonstrate Fastq compression with Squish
+// Optionally compare results against Clumpify
+
 def splitList(value) {
     return (value ?: '')
         .toString()
