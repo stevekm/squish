@@ -1,7 +1,6 @@
 #!/usr/bin/env nextflow
 
 nextflow.enable.dsl = 2
-import groovy.json.JsonSlurper
 
 def splitList(value) {
     return (value ?: '')
@@ -50,6 +49,9 @@ process RECOMPRESS_FASTQ {
  *
  * The squish binary is expected to be available on PATH. For local runs, place
  * it in a local bin directory that Nextflow prepends to PATH.
+ *
+ * When params.run_clumpify is true (default), Clumpify is also run on each
+ * primary FASTQ and its results are included in report.csv for comparison.
  */
 
 process RUN_SQUISH_METHOD {
@@ -110,6 +112,110 @@ process RUN_SQUISH_METHOD {
     """
 }
 
+/*
+ * Run Clumpify on a single primary FASTQ and emit a report.clumpify.json
+ * whose fields match squish's report.json so both feed into the same CSV.
+ *
+ * uncompressed_bytes is null because Clumpify does not expose that count
+ * without a separate decompression pass.
+ */
+process RUN_CLUMPIFY {
+    tag "${sample_id}:clumpify"
+
+    publishDir "${params.outdir}", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(fastq_in), val(fastqout_base)
+    val clump_k
+    val clumpify_args
+
+    output:
+    path "${sample_id}/clumpify"                           , emit: clumpify_results
+    path "${sample_id}/clumpify/report.clumpify.json"      , emit: report_json
+    path "${sample_id}/clumpify/*.log"                     , emit: log
+
+    script:
+    def outdir    = "${sample_id}/clumpify"
+    def out_fastq = "${fastqout_base}.clumpify.fastq.gz"
+    def jvm_mem   = task.memory ? "-Xmx${(task.memory.toGiga() * 0.75).intValue()}g" : "-Xmx6g"
+    """
+    mkdir -p "${outdir}"
+
+    input_size=\$(stat -L -c%s "${fastq_in}")
+
+    clumpify.sh ${jvm_mem} \\
+      in="${fastq_in}" \\
+      out="${outdir}/${out_fastq}" \\
+      k=${clump_k} \\
+      tmpdir=./tmp \\
+      ${clumpify_args} \\
+      &> "${outdir}/${fastqout_base}.clumpify.log"
+
+    output_size=\$(stat -c%s "${outdir}/${out_fastq}")
+    size_diff=\$(( input_size - output_size ))
+    size_ratio=\$(awk -v i="\${input_size}" -v o="\${output_size}" \\
+      'BEGIN { if (i > 0) printf "%.6f", (i - o) / i; else print "0" }')
+
+    cat > "${outdir}/report.clumpify.json" <<EOF
+{
+  "sort_method": "clumpify",
+  "sort_engine": "clumpify",
+  "clump_kmer_length": ${clump_k},
+  "uncompressed_bytes": null,
+  "output_size_bytes": \${output_size},
+  "size_difference_bytes": \${size_diff},
+  "size_reduction_ratio": \${size_ratio},
+  "input": { "path": "${fastq_in}", "size_bytes": \${input_size} },
+  "output": { "argument": "${out_fastq}" },
+  "paired_outputs": []
+}
+EOF
+
+    test -s "${outdir}/report.clumpify.json"
+    """
+}
+
+/*
+ * Convert a report JSON file (squish or Clumpify) into a single CSV row.
+ * The sample_id is inferred from the grandparent directory name, which works
+ * for both {sample_id}/{method}/report.json and
+ * {sample_id}/clumpify/report.clumpify.json.
+ */
+def reportJsonToCsvRow(jsonFile) {
+    def json        = new groovy.json.JsonSlurper().parseText(jsonFile.text)
+    def sample_id   = jsonFile.parent.parent.name
+
+    def header = [
+        "sample_id",
+        "sort_method",
+        "sort_engine",
+        "input_size_bytes",
+        "uncompressed_bytes",
+        "output_size_bytes",
+        "size_difference_bytes",
+        "size_reduction_ratio",
+        "output_arg",
+        "input_arg",
+        "paired_output_args",
+    ].join(",")
+
+    def line = [
+        sample_id,
+        json["sort_method"],
+        json["sort_engine"],
+        json["input"]?.get("size_bytes") ?: "",
+        json["uncompressed_bytes"] != null ? json["uncompressed_bytes"] : "",
+        json["output_size_bytes"],
+        json["size_difference_bytes"],
+        json["size_reduction_ratio"],
+        json["output"]["argument"],
+        json["input"]["path"],
+        (json["paired_outputs"] ?: []).collect { it["output"]["argument"] }.join(";"),
+    ].join(",")
+
+    return [header, line].join("\n")
+}
+
 workflow {
     samples_ch = Channel
         .fromPath(params.samplesheet)
@@ -121,6 +227,7 @@ workflow {
 
     if (params.recompress_r1 == true) {
         RECOMPRESS_FASTQ(samples_ch)
+        samples_ch = RECOMPRESS_FASTQ.out
     }
 
 
@@ -131,12 +238,7 @@ workflow {
      * combine creates the Cartesian product of samplesheet rows and sort
      * methods, so every sample is run through every configured sorter.
      */
-    if (params.recompress_r1 == true) {
-        sample_methods_ch = RECOMPRESS_FASTQ.out.combine(methods_ch)
-    } else {
-        sample_methods_ch = samples_ch.combine(methods_ch)
-    }
-
+    sample_methods_ch = samples_ch.combine(methods_ch)
 
     RUN_SQUISH_METHOD(
         sample_methods_ch,
@@ -147,50 +249,29 @@ workflow {
         Channel.value(params.make_pdf as boolean)
     )
 
+    all_reports_ch = RUN_SQUISH_METHOD.out.report_json
+
+    if (params.run_clumpify) {
+        clumpify_in_ch = samples_ch.map { sample_id, fastq_in, fastqout_base, _paired, _paired_out ->
+            tuple(sample_id, fastq_in, fastqout_base)
+        }
+
+        RUN_CLUMPIFY(
+            clumpify_in_ch,
+            Channel.value(params.clump_k as int),
+            Channel.value(params.clumpify_args)
+        )
+
+        all_reports_ch = all_reports_ch.mix(RUN_CLUMPIFY.out.report_json)
+    }
+
     /*
-     * Each process emits one JSON report. Convert those reports into compact
-     * CSV rows for quick comparison across samples and methods.
+     * Map every report JSON (squish and optionally Clumpify) to a CSV row
+     * and collect into a single report.csv for side-by-side comparison.
      */
-    RUN_SQUISH_METHOD.out.report_json.map{ jsonFile ->
-        def jsonSlurper = new JsonSlurper()
-        def Map json = (Map) new JsonSlurper().parseText(jsonFile.text)
-        def sort_method = json["sort_method"]
-        def sort_engine = json["sort_engine"]
-        def sample_id = jsonFile.parent.parent.name
-        def uncompressed_bytes = json["uncompressed_bytes"]
-        def output_size_bytes = json["output_size_bytes"]
-        def size_difference_bytes = json["size_difference_bytes"]
-        def size_reduction_ratio = json["size_reduction_ratio"]
-        def output_arg = json["output"]["argument"]
-        def input_arg = json["input"]["path"]
-        def paired_output_args = (json["paired_outputs"] ?: []).collect { it["output"]["argument"] }.join(";")
-
-        header = [
-            "sample_id",
-            "sort_method",
-            "sort_engine",
-            "uncompressed_bytes",
-            "output_size_bytes",
-            "size_difference_bytes",
-            "size_reduction_ratio",
-            "output_arg",
-            "input_arg",
-            "paired_output_args"
-            ].join(",")
-        line = [
-            sample_id,
-            sort_method,
-            sort_engine,
-            uncompressed_bytes,
-            output_size_bytes,
-            size_difference_bytes,
-            size_reduction_ratio,
-            output_arg,
-            input_arg,
-            paired_output_args
-            ].join(",")
-        output = [header, line].join("\n")
-
-        return output
-    }.collectFile(name: 'report.csv', storeDir: "${params.outdir}", newLine: true, keepHeader: true)
+    all_reports_ch
+        .map { jsonfile ->
+            return reportJsonToCsvRow(jsonfile)
+        }
+        .collectFile(name: 'report.csv', storeDir: "${params.outdir}", newLine: true, keepHeader: true)
 }
