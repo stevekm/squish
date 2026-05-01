@@ -11,6 +11,26 @@ def splitList(value) {
         .findAll { it }
 }
 
+
+process RECOMPRESS_FASTQ {
+    tag "${sample_id}"
+
+    input:
+    tuple val(sample_id), path(fastq_in), val(fastqout_base), path(paired_fastqs), val(paired_outputs)
+
+    output:
+    tuple val(sample_id), path(output_file), val(fastqout_base), path(paired_fastqs), val(paired_outputs)
+
+    script:
+    output_file = "recompress.${sample_id}.fastq.gz"
+    """
+    gunzip -c "${fastq_in}" | pigz -9 > "${output_file}"
+    """
+}
+
+
+
+
 /*
  * Nextflow version of the Makefile test-run-all recipes.
  *
@@ -99,6 +119,11 @@ workflow {
             tuple(row.sample_id, file(row.fastqin), row.fastqout, paired_fastqs, row.paired_outputs ?: '')
         }
 
+    if (params.recompress_r1 == true) {
+        RECOMPRESS_FASTQ(samples_ch)
+    }
+
+
     methods_ch = Channel
         .fromList(params.methods.tokenize(',').collect { it.trim() }.findAll { it })
 
@@ -106,8 +131,12 @@ workflow {
      * combine creates the Cartesian product of samplesheet rows and sort
      * methods, so every sample is run through every configured sorter.
      */
-    sample_methods_ch = samples_ch
-        .combine(methods_ch)
+    if (params.recompress_r1 == true) {
+        sample_methods_ch = RECOMPRESS_FASTQ.out.combine(methods_ch)
+    } else {
+        sample_methods_ch = samples_ch.combine(methods_ch)
+    }
+
 
     RUN_SQUISH_METHOD(
         sample_methods_ch,
