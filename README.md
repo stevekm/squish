@@ -187,8 +187,7 @@ Use `-bucket` to choose the external bucket strategy:
 ./squish -engine external -bucket gc-range -buckets 1024 ...
 ```
 
-Temporary bucket files are written to `output/tmp/<method>` by default (i.e.
-`-outdir`/tmp/`-m`).
+Temporary bucket files are written to `output/tmp/<method>` by default.
 
 ## Paired FASTQ Inputs
 
