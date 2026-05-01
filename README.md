@@ -1,5 +1,7 @@
 # squish
 
+[![Docker Hub](https://img.shields.io/docker/v/stevekm/squish?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/stevekm/squish/tags)
+
 `squish` reorders FASTQ records before gzip compression. The goal is to place
 similar records near each other so the compressed `.fastq.gz` output is smaller.
 
