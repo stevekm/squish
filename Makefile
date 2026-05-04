@@ -90,8 +90,9 @@ nextflow-test-run-all-external:
 DOCKER_TAG:=stevekm/squish:$(GIT_TAG)
 docker-build:
 	docker build \
-	  --build-arg "Version=$(GIT_TAG)" \
-	  -t $(DOCKER_TAG) .
+	--platform linux/amd64 \
+	--build-arg "Version=$(GIT_TAG)" \
+	-t $(DOCKER_TAG) .
 
 # docker push stevekm/squish:latest
 docker-push:
