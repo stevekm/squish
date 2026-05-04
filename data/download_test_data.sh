@@ -43,7 +43,7 @@ download_s3() {
     fi
 
     echo "DOWNLOAD ${s3_path} -> ${output}"
-    aws s3 cp --no-sign-request "${s3_path}" "${output}"
+    aws s3 cp --no-sign-request "${s3_path}" "${output}" || echo "DOWNLOAD FAILED FOR ${s3_path}"
 }
 
 make_head_fastq_gz() {
