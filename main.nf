@@ -5,6 +5,11 @@ nextflow.enable.dsl = 2
 // Workflow to benchmark and demonstrate Fastq compression with Squish
 // Optionally compare results against Clumpify
 
+// USAGE:
+// nextflow run main.nf
+// or
+// nice nextflow run main.nf -profile docker --run_clumpify true --samplesheet samples.csv -resume
+
 def splitList(value) {
     return (value ?: '')
         .toString()
